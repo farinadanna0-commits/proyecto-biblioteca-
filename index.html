@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Biblioteca Central · Sistema de Gestión</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<header>
+  <div class="head-row">
+    <div>
+      <h1>📖 Biblioteca Central</h1>
+      <p>Gestión moderna de préstamos, libros y socios</p>
+    </div>
+    <button class="btn btn-primary" onclick="openModal('modalLoan', event)">+ Préstamo</button>
+  </div>
+</header>
+
+<nav class="nav-bar glass">
+  <div class="nav-container">
+    <button class="nav-tab active" onclick="switchTab('home', event)">Inicio</button>
+    <button class="nav-tab" onclick="switchTab('loans', event)">Préstamos</button>
+    <button class="nav-tab" onclick="switchTab('books', event)">Catálogo</button>
+    <button class="nav-tab" onclick="switchTab('members', event)">Socios</button>
+  </div>
+</nav>
+
+<main>
+  <!-- TAB: HOME -->
+  <section id="tab-home" class="tab-content active">
+    <div class="dash-grid">
+      <div class="dash-card glass">
+        <div class="num mono" id="dashActiveLoans" style="color:var(--cobalt);">0</div>
+        <div class="lbl">Préstamos Activos</div>
+      </div>
+      <div class="dash-card glass">
+        <div class="num mono" id="dashOverdueLoans" style="color:var(--red);">0</div>
+        <div class="lbl">Préstamos Vencidos</div>
+      </div>
+      <div class="dash-card glass">
+        <div class="num mono" id="dashTotalBooks" style="color:var(--ink);">0</div>
+        <div class="lbl">Libros Registrados</div>
+      </div>
+      <div class="dash-card glass">
+        <div class="num mono" id="dashTotalMembers" style="color:var(--green);">0</div>
+        <div class="lbl">Socios Activos</div>
+      </div>
+    </div>
+
+    <h3 class="section-title">Acciones Rápidas</h3>
+    <div class="quick-actions">
+      <div class="action-btn glass" onclick="openModal('modalLoan', event)">
+        <div class="action-icon">📋</div>
+        <div>
+          <strong>Nuevo Préstamo</strong>
+          <div style="font-size:0.75rem; color:var(--ink-soft);">Registrar entrega de libro</div>
+        </div>
+      </div>
+      <div class="action-btn glass" onclick="openModal('modalBook', event)">
+        <div class="action-icon">📚</div>
+        <div>
+          <strong>Añadir Libro</strong>
+          <div style="font-size:0.75rem; color:var(--ink-soft);">Ampliar el catálogo</div>
+        </div>
+      </div>
+      <div class="action-btn glass" onclick="openModal('modalMember', event)">
+        <div class="action-icon">👤</div>
+        <div>
+          <strong>Nuevo Socio</strong>
+          <div style="font-size:0.75rem; color:var(--ink-soft);">Registrar miembro</div>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="section-title">Préstamos Próximos o Vencidos</h3>
+    <div class="list-grid" id="homeRecentLoans"></div>
+  </section>
+
+  <!-- TAB: LOANS -->
+  <section id="tab-loans" class="tab-content">
+    <div class="controls">
+      <div class="search-box glass">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4F57" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="loanSearch" placeholder="Buscar préstamo por libro o socio..." oninput="renderLoans()">
+      </div>
+      <div class="filters" id="loanFilters">
+        <button class="filter active" onclick="setLoanFilter('todos', this)">Todos</button>
+        <button class="filter" onclick="setLoanFilter('on-time', this)">Activos</button>
+        <button class="filter" onclick="setLoanFilter('due-soon', this)">Por Vencer</button>
+        <button class="filter" onclick="setLoanFilter('overdue', this)">Vencidos</button>
+        <button class="filter" onclick="setLoanFilter('returned', this)">Devueltos</button>
+      </div>
+    </div>
+    <div class="list-grid" id="loansList"></div>
+  </section>
+
+  <!-- TAB: BOOKS -->
+  <section id="tab-books" class="tab-content">
+    <div class="controls">
+      <div class="search-box glass">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4F57" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="bookSearch" placeholder="Buscar libro por título, autor o ISBN..." oninput="renderBooks()">
+      </div>
+      <button class="btn btn-primary" onclick="openModal('modalBook', event)">+ Libro</button>
+    </div>
+    <div class="list-grid" id="booksList"></div>
+  </section>
+
+  <!-- TAB: MEMBERS -->
+  <section id="tab-members" class="tab-content">
+    <div class="controls">
+      <div class="search-box glass">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4F57" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="memberSearch" placeholder="Buscar socio por nombre, DNI o email..." oninput="renderMembers()">
+      </div>
+      <button class="btn btn-primary" onclick="openModal('modalMember', event)">+ Socio</button>
+    </div>
+    <div class="list-grid" id="membersList"></div>
+  </section>
+</main>
+
+<!-- MODAL: NUEVO PRESTAMO -->
+<div class="modal" id="modalLoan">
+  <div class="modal-card glass">
+    <h2>Registrar Nuevo Préstamo</h2>
+    <div class="form-grid">
+      <div class="field full">
+        <label>Seleccionar Libro</label>
+        <select id="f-loan-book"></select>
+      </div>
+      <div class="field full">
+        <label>Seleccionar Socio</label>
+        <select id="f-loan-member"></select>
+      </div>
+      <div class="field">
+        <label>Fecha Préstamo</label>
+        <input type="date" id="f-loan-start">
+      </div>
+      <div class="field">
+        <label>Fecha Devolución</label>
+        <input type="date" id="f-loan-due">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveLoan(event)">Registrar Préstamo</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalLoan')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NUEVO LIBRO -->
+<div class="modal" id="modalBook">
+  <div class="modal-card glass">
+    <h2>Añadir Nuevo Libro</h2>
+    <div class="form-grid">
+      <div class="field full">
+        <label>Título del libro</label>
+        <input type="text" id="f-book-title" placeholder="Ej. Cien años de soledad">
+      </div>
+      <div class="field">
+        <label>Autor</label>
+        <input type="text" id="f-book-author" placeholder="Gabriel García Márquez">
+      </div>
+      <div class="field">
+        <label>Categoría / Género</label>
+        <input type="text" id="f-book-genre" placeholder="Novela, Ficción...">
+      </div>
+      <div class="field">
+        <label>ISBN</label>
+        <input type="text" id="f-book-isbn" placeholder="978-0307474728">
+      </div>
+      <div class="field">
+        <label>Copias Disponibles</label>
+        <input type="number" id="f-book-copies" value="1" min="1">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveBook(event)">Guardar Libro</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalBook')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NUEVO SOCIO -->
+<div class="modal" id="modalMember">
+  <div class="modal-card glass">
+    <h2>Registrar Nuevo Socio</h2>
+    <div class="form-grid">
+      <div class="field full">
+        <label>Nombre Completo</label>
+        <input type="text" id="f-member-name" placeholder="Ej. Ana Martínez">
+      </div>
+      <div class="field">
+        <label>DNI / Documento</label>
+        <input type="text" id="f-member-dni" placeholder="12345678">
+      </div>
+      <div class="field">
+        <label>Teléfono</label>
+        <input type="text" id="f-member-phone" placeholder="+54 11 ...">
+      </div>
+      <div class="field full">
+        <label>Correo Electrónico</label>
+        <input type="email" id="f-member-email" placeholder="ana@ejemplo.com">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveMember(event)">Guardar Socio</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalMember')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
