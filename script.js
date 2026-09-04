@@ -1,3 +1,55 @@
+// ---------- Usuario Administrador ----------
+const ADMIN_USER = 'enzo';
+const ADMIN_PASS = 'enzo123';
+
+function doLogin(evt){
+  if(evt) evt.preventDefault();
+  const user = document.getElementById('f-login-user').value.trim();
+  const pass = document.getElementById('f-login-pass').value;
+  const errorEl = document.getElementById('loginError');
+
+  if(user === ADMIN_USER && pass === ADMIN_PASS){
+    sessionStorage.setItem('lib_session', 'ok');
+    errorEl.textContent = '';
+    showApp();
+  } else {
+    errorEl.textContent = 'Usuario o contraseña incorrectos';
+  }
+}
+
+function doLogout(evt){
+  if(evt) evt.preventDefault();
+  sessionStorage.removeItem('lib_session');
+  document.getElementById('f-login-user').value = '';
+  document.getElementById('f-login-pass').value = '';
+  document.getElementById('appContent').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+function showApp(){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appContent').style.display = 'block';
+  renderAll();
+}
+
+function checkSession(){
+  if(sessionStorage.getItem('lib_session') === 'ok'){
+    showApp();
+  } else {
+    document.getElementById('loginScreen').style.display = 'flex';
+  }
+}
+
+// Permite iniciar sesión presionando Enter
+document.addEventListener('DOMContentLoaded', () => {
+  ['f-login-user', 'f-login-pass'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el){
+      el.addEventListener('keydown', (e) => { if(e.key === 'Enter') doLogin(e); });
+    }
+  });
+});
+
 // ---------- Base de Datos (LocalStorage) ----------
 let loans = JSON.parse(localStorage.getItem('lib_loans')) || [];
 let books = JSON.parse(localStorage.getItem('lib_books')) || [
@@ -5,11 +57,13 @@ let books = JSON.parse(localStorage.getItem('lib_books')) || [
   {id: 2, title: 'Rayuela', author: 'Julio Cortázar', genre: 'Novela', isbn: '978-8437604572', copies: 2}
 ];
 let members = JSON.parse(localStorage.getItem('lib_members')) || [
-  {id: 1, name: 'Carlos Gómez', dni: '38901234', phone: '555-0192', email: 'carlos@mail.com'},
-  {id: 2, name: 'Lucía Fernández', dni: '40123456', phone: '555-0143', email: 'lucia@mail.com'}
+  {id: 1, name: 'Carlos Gómez', dni: '38901234', phone: '555-0192', email: 'carlos@mail.com', tipo: 'maestro', course: '', subject: 'Historia'},
+  {id: 2, name: 'Lucía Fernández', dni: '40123456', phone: '555-0143', email: 'lucia@mail.com', tipo: 'alumno', course: '4° Año A', subject: ''}
 ];
 
 let activeLoanFilter = 'todos';
+let activeMemberFilter = 'todos';
+let selectedMemberType = 'alumno';
 
 function persist(){
   localStorage.setItem('lib_loans', JSON.stringify(loans));
@@ -99,6 +153,9 @@ function openModal(id){
     const d = new Date(); d.setDate(d.getDate() + 14);
     document.getElementById('f-loan-due').value = d.toISOString().slice(0,10);
   }
+  if(id === 'modalMember'){
+    setMemberType('alumno');
+  }
 }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 
@@ -107,7 +164,18 @@ function populateSelects(){
   const memberSel = document.getElementById('f-loan-member');
 
   bookSel.innerHTML = books.length ? books.map(b => `<option value="${b.id}">${b.title} (${b.author})</option>`).join('') : '<option value="">No hay libros guardados</option>';
-  memberSel.innerHTML = members.length ? members.map(m => `<option value="${m.id}">${m.name} - DNI: ${m.dni}</option>`).join('') : '<option value="">No hay socios guardados</option>';
+  memberSel.innerHTML = members.length ? members.map(m => `<option value="${m.id}">${tipoLabel(m.tipo)} — ${m.name} (DNI: ${m.dni})</option>`).join('') : '<option value="">No hay socios guardados</option>';
+}
+
+// ---------- Tipo de Socio (Alumno / Maestro) ----------
+function tipoLabel(tipo){ return tipo === 'maestro' ? 'Maestro' : 'Alumno'; }
+
+function setMemberType(tipo){
+  selectedMemberType = tipo;
+  document.getElementById('typeBtn-alumno').classList.toggle('active', tipo === 'alumno');
+  document.getElementById('typeBtn-maestro').classList.toggle('active', tipo === 'maestro');
+  document.getElementById('field-member-extra-alumno').style.display = tipo === 'alumno' ? 'flex' : 'none';
+  document.getElementById('field-member-extra-maestro').style.display = tipo === 'maestro' ? 'flex' : 'none';
 }
 
 // ---------- Operaciones Guardar ----------
@@ -156,14 +224,18 @@ function saveMember(){
   const dni = document.getElementById('f-member-dni').value.trim();
   const phone = document.getElementById('f-member-phone').value.trim();
   const email = document.getElementById('f-member-email').value.trim();
+  const tipo = selectedMemberType;
+  const course = document.getElementById('f-member-course').value.trim();
+  const subject = document.getElementById('f-member-subject').value.trim();
 
   if(!name || !dni){ showToast('Ingresá nombre y DNI del socio', 'danger'); return; }
 
-  members.push({ id: Date.now(), name, dni, phone, email });
+  members.push({ id: Date.now(), name, dni, phone, email, tipo, course, subject });
   persist();
   closeModal('modalMember');
   document.querySelectorAll('#modalMember input').forEach(i => i.value = '');
-  showToast('Socio registrado correctamente', 'success');
+  setMemberType('alumno');
+  showToast(`${tipoLabel(tipo)} registrado correctamente`, 'success');
 }
 
 // ---------- Acciones sobre préstamos ----------
@@ -284,9 +356,17 @@ function renderBooks(){
   `).join('');
 }
 
+function setMemberFilter(key, btn){
+  activeMemberFilter = key;
+  document.querySelectorAll('#memberFilters .filter').forEach(f => f.classList.remove('active'));
+  btn.classList.add('active');
+  renderMembers();
+}
+
 function renderMembers(){
   const query = (document.getElementById('memberSearch')?.value || '').toLowerCase();
-  const list = members.filter(m => m.name.toLowerCase().includes(query) || m.dni.includes(query) || (m.email || '').toLowerCase().includes(query));
+  let list = members.filter(m => m.name.toLowerCase().includes(query) || m.dni.includes(query) || (m.email || '').toLowerCase().includes(query));
+  if(activeMemberFilter !== 'todos') list = list.filter(m => (m.tipo || 'alumno') === activeMemberFilter);
 
   const container = document.getElementById('membersList');
   if(!list.length){
@@ -294,19 +374,25 @@ function renderMembers(){
     return;
   }
 
-  container.innerHTML = list.map(m => `
+  container.innerHTML = list.map(m => {
+    const tipo = m.tipo || 'alumno';
+    const extra = tipo === 'maestro' ? (m.subject ? `Materia: ${m.subject}` : 'Maestro') : (m.course ? `Curso: ${m.course}` : 'Alumno');
+    return `
     <div class="ticket glass">
-      <div class="edge returned"></div>
+      <div class="edge ${tipo === 'maestro' ? 'due-soon' : 'on-time'}"></div>
       <div class="ticket-main">
         <div class="title">${m.name}</div>
         <div class="sub">DNI: ${m.dni} | Tel: ${m.phone || 'S/N'}</div>
-        <span class="badge">${m.email || 'Sin correo'}</span>
+        <span class="badge">${tipoLabel(tipo)}</span>
+        <span class="badge" style="margin-left:6px;">${extra}</span>
       </div>
       <div class="ticket-stub">
+        <span class="badge mono">${m.email || 'Sin correo'}</span>
         <button class="action-link danger" onclick="deleteMember(${m.id})">Eliminar</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderAll(){
@@ -316,4 +402,4 @@ function renderAll(){
   renderMembers();
 }
 
-renderAll();
+checkSession();

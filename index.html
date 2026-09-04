@@ -12,13 +12,38 @@
 
 <div class="toast-wrap" id="toastWrap"></div>
 
+<!-- PANTALLA DE LOGIN -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card glass">
+  
+    <h1 class="login-title">Biblioteca Colegio Secundario San Carlos</h1>
+    <p class="login-sub">Ingresá con tu usuario administrador</p>
+    <div class="field full">
+      <label>Usuario</label>
+      <input type="text" id="f-login-user" placeholder="usuario" autocomplete="username">
+    </div>
+    <div class="field full">
+      <label>Contraseña</label>
+      <input type="password" id="f-login-pass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <p class="login-error" id="loginError"></p>
+    <button class="btn btn-primary login-btn" onclick="doLogin(event)">Ingresar</button>
+  </div>
+</div>
+
+<!-- CONTENIDO DE LA APLICACIÓN (oculto hasta iniciar sesión) -->
+<div id="appContent" style="display:none;">
+
 <header>
   <div class="head-row">
     <div>
-      <h1>📖 Biblioteca Central</h1>
+      <h1> Biblioteca Colegio Secundario San Carlos</h1>
       <p>Gestión moderna de préstamos, libros y socios</p>
     </div>
-    <button class="btn btn-primary" onclick="openModal('modalLoan', event)">+ Préstamo</button>
+    <div class="head-actions">
+      <button class="btn btn-primary" onclick="openModal('modalLoan', event)">+ Préstamo</button>
+      <button class="btn btn-ghost" onclick="doLogout(event)">Salir</button>
+    </div>
   </div>
 </header>
 
@@ -56,21 +81,21 @@
     <h3 class="section-title">Acciones Rápidas</h3>
     <div class="quick-actions">
       <div class="action-btn glass" onclick="openModal('modalLoan', event)">
-        <div class="action-icon">📋</div>
+       
         <div>
           <strong>Nuevo Préstamo</strong>
           <div style="font-size:0.75rem; color:var(--ink-soft);">Registrar entrega de libro</div>
         </div>
       </div>
       <div class="action-btn glass" onclick="openModal('modalBook', event)">
-        <div class="action-icon">📚</div>
+        
         <div>
           <strong>Añadir Libro</strong>
           <div style="font-size:0.75rem; color:var(--ink-soft);">Ampliar el catálogo</div>
         </div>
       </div>
       <div class="action-btn glass" onclick="openModal('modalMember', event)">
-        <div class="action-icon">👤</div>
+       
         <div>
           <strong>Nuevo Socio</strong>
           <div style="font-size:0.75rem; color:var(--ink-soft);">Registrar miembro</div>
@@ -120,6 +145,11 @@
         <input type="text" id="memberSearch" placeholder="Buscar socio por nombre, DNI o email..." oninput="renderMembers()">
       </div>
       <button class="btn btn-primary" onclick="openModal('modalMember', event)">+ Socio</button>
+    </div>
+    <div class="filters" id="memberFilters" style="margin-bottom:14px;">
+      <button class="filter active" onclick="setMemberFilter('todos', this)">Todos</button>
+      <button class="filter" onclick="setMemberFilter('alumno', this)">Alumnos</button>
+      <button class="filter" onclick="setMemberFilter('maestro', this)">Maestros</button>
     </div>
     <div class="list-grid" id="membersList"></div>
   </section>
@@ -193,6 +223,13 @@
     <h2>Registrar Nuevo Socio</h2>
     <div class="form-grid">
       <div class="field full">
+        <label>Tipo de Socio</label>
+        <div class="type-toggle">
+          <button type="button" class="type-opt active" id="typeBtn-alumno" onclick="setMemberType('alumno')">🎓 Alumno</button>
+          <button type="button" class="type-opt" id="typeBtn-maestro" onclick="setMemberType('maestro')">🧑‍🏫 Maestro</button>
+        </div>
+      </div>
+      <div class="field full">
         <label>Nombre Completo</label>
         <input type="text" id="f-member-name" placeholder="Ej. Ana Martínez">
       </div>
@@ -203,6 +240,14 @@
       <div class="field">
         <label>Teléfono</label>
         <input type="text" id="f-member-phone" placeholder="+54 11 ...">
+      </div>
+      <div class="field full" id="field-member-extra-alumno">
+        <label>Curso / Grado</label>
+        <input type="text" id="f-member-course" placeholder="Ej. 5° Año B">
+      </div>
+      <div class="field full" id="field-member-extra-maestro" style="display:none;">
+        <label>Materia / Área</label>
+        <input type="text" id="f-member-subject" placeholder="Ej. Matemática">
       </div>
       <div class="field full">
         <label>Correo Electrónico</label>
@@ -215,6 +260,9 @@
     </div>
   </div>
 </div>
+
+</div>
+<!-- fin #appContent -->
 
 <script src="script.js"></script>
 </body>
