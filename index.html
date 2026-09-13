@@ -17,7 +17,7 @@
   <div class="login-card glass">
   
     <h1 class="login-title">Biblioteca Colegio Secundario San Carlos</h1>
-    <p class="login-sub">Ingresá con tu usuario administrador</p>
+    <p class="login-sub">Ingresá con tu usuario y contraseña</p>
     <div class="field full">
       <label>Usuario</label>
       <input type="text" id="f-login-user" placeholder="usuario" autocomplete="username">
@@ -41,6 +41,7 @@
       <p>Gestión moderna de préstamos, libros y socios</p>
     </div>
     <div class="head-actions">
+      <span class="mono" id="currentUserInfo" style="color:rgba(255,255,255,0.85); font-size:0.75rem; margin-right:2px;"></span>
       <button class="btn btn-primary" onclick="openModal('modalLoan', event)">+ Préstamo</button>
       <button class="btn btn-ghost" onclick="doLogout(event)">Salir</button>
     </div>
@@ -53,6 +54,9 @@
     <button class="nav-tab" onclick="switchTab('loans', event)">Préstamos</button>
     <button class="nav-tab" onclick="switchTab('books', event)">Catálogo</button>
     <button class="nav-tab" onclick="switchTab('members', event)">Socios</button>
+    <button class="nav-tab" data-roles="ADMIN,BIBLIOTECARIO" onclick="switchTab('sanciones', event)">Sanciones</button>
+    <button class="nav-tab" data-roles="ADMIN,BIBLIOTECARIO" onclick="switchTab('reportes', event)">Reportes</button>
+    <button class="nav-tab" data-roles="ADMIN" onclick="switchTab('usuarios', event)">Usuarios</button>
   </div>
 </nav>
 
@@ -130,10 +134,11 @@
     <div class="controls">
       <div class="search-box glass">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4F57" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="bookSearch" placeholder="Buscar libro por título, autor o ISBN..." oninput="renderBooks()">
+        <input type="text" id="bookSearch" placeholder="Buscar libro por título, autor, ISBN o categoría..." oninput="renderBooks()">
       </div>
       <button class="btn btn-primary" onclick="openModal('modalBook', event)">+ Libro</button>
     </div>
+    <div class="filters" id="bookGenreFilters" style="margin-bottom:14px;"></div>
     <div class="list-grid" id="booksList"></div>
   </section>
 
@@ -152,6 +157,57 @@
       <button class="filter" onclick="setMemberFilter('maestro', this)">Maestros</button>
     </div>
     <div class="list-grid" id="membersList"></div>
+  </section>
+
+  <!-- TAB: SANCIONES (Módulo 5) -->
+  <section id="tab-sanciones" class="tab-content" data-roles="ADMIN,BIBLIOTECARIO">
+    <div class="controls">
+      <div class="filters" id="sancionFilters">
+        <button class="filter active" onclick="setSancionFilter('todos', this)">Todas</button>
+        <button class="filter" onclick="setSancionFilter('pendiente', this)">Pendientes</button>
+        <button class="filter" onclick="setSancionFilter('pagado', this)">Pagadas</button>
+      </div>
+    </div>
+    <div class="list-grid" id="sancionesList"></div>
+  </section>
+
+  <!-- TAB: REPORTES (Módulo 6) -->
+  <section id="tab-reportes" class="tab-content" data-roles="ADMIN,BIBLIOTECARIO">
+    <div class="controls">
+      <div class="field" style="min-width:200px;">
+        <label>Tipo de reporte</label>
+        <select id="f-reporte-tipo">
+          <option value="vencidos">Préstamos vencidos</option>
+          <option value="socios-atrasados">Socios con atrasos</option>
+          <option value="mas-solicitados">Libros más solicitados</option>
+          <option value="danos-perdidas">Daños y pérdidas</option>
+          <option value="ingresos-multas">Ingresos por multas</option>
+        </select>
+      </div>
+      <div class="field" style="min-width:150px;">
+        <label>Desde</label>
+        <input type="date" id="f-reporte-desde">
+      </div>
+      <div class="field" style="min-width:150px;">
+        <label>Hasta</label>
+        <input type="date" id="f-reporte-hasta">
+      </div>
+      <button class="btn btn-primary" onclick="generarReporte(event)" style="align-self:flex-end;">Generar</button>
+    </div>
+    <div class="dash-grid" id="reporteResumen" style="display:none;"></div>
+    <div class="list-grid" id="reporteResultados"></div>
+  </section>
+
+  <!-- TAB: USUARIOS (Módulo 7, solo ADMIN) -->
+  <section id="tab-usuarios" class="tab-content" data-roles="ADMIN">
+    <div class="controls">
+      <div class="search-box glass">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4F57" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="usuarioSearch" placeholder="Buscar usuario por nombre..." oninput="renderUsuarios()">
+      </div>
+      <button class="btn btn-primary" onclick="openModal('modalUsuario', event)">+ Usuario</button>
+    </div>
+    <div class="list-grid" id="usuariosList"></div>
   </section>
 </main>
 
@@ -184,6 +240,33 @@
   </div>
 </div>
 
+<!-- MODAL: DEVOLUCIÓN -->
+<div class="modal" id="modalDevolucion">
+  <div class="modal-card glass">
+    <h2>Registrar Devolución</h2>
+    <input type="hidden" id="f-devolucion-prestamo-id">
+    <div class="form-grid">
+      <div class="field full">
+        <label>Estado del libro devuelto</label>
+        <select id="f-devolucion-estado">
+          <option value="buen_estado">Buen estado</option>
+          <option value="dano_menor">Daño menor</option>
+          <option value="dano_mayor">Daño mayor</option>
+          <option value="perdida">Pérdida</option>
+        </select>
+      </div>
+      <div class="field full">
+        <label>Observaciones</label>
+        <input type="text" id="f-devolucion-obs" placeholder="Opcional">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="confirmarDevolucion(event)">Confirmar Devolución</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalDevolucion')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: NUEVO LIBRO -->
 <div class="modal" id="modalBook">
   <div class="modal-card glass">
@@ -198,15 +281,35 @@
         <input type="text" id="f-book-author" placeholder="Gabriel García Márquez">
       </div>
       <div class="field">
-        <label>Categoría / Género</label>
+        <label>Editorial</label>
+        <input type="text" id="f-book-editorial" placeholder="Ej. Sudamericana">
+      </div>
+      <div class="field">
+        <label>Edición</label>
+        <input type="text" id="f-book-edicion" placeholder="1ra, 2da...">
+      </div>
+      <div class="field">
+        <label>Año de publicación</label>
+        <input type="number" id="f-book-anio" placeholder="2020">
+      </div>
+      <div class="field">
+        <label>Género literario</label>
         <input type="text" id="f-book-genre" placeholder="Novela, Ficción...">
+      </div>
+      <div class="field">
+        <label>Categoría / Área</label>
+        <input type="text" id="f-book-categoria" placeholder="Lengua, Historia, Ciencias...">
       </div>
       <div class="field">
         <label>ISBN</label>
         <input type="text" id="f-book-isbn" placeholder="978-0307474728">
       </div>
+      <div class="field full">
+        <label>Ubicación física</label>
+        <input type="text" id="f-book-ubicacion" placeholder="Ej. Estante A1">
+      </div>
       <div class="field">
-        <label>Copias Disponibles</label>
+        <label>Cantidad de Ejemplares</label>
         <input type="number" id="f-book-copies" value="1" min="1">
       </div>
     </div>
@@ -241,9 +344,13 @@
         <label>Teléfono</label>
         <input type="text" id="f-member-phone" placeholder="+54 11 ...">
       </div>
-      <div class="field full" id="field-member-extra-alumno">
+      <div class="field" id="field-member-extra-alumno">
         <label>Curso / Grado</label>
-        <input type="text" id="f-member-course" placeholder="Ej. 5° Año B">
+        <input type="text" id="f-member-course" placeholder="Ej. 5° Año">
+      </div>
+      <div class="field" id="field-member-division">
+        <label>División</label>
+        <input type="text" id="f-member-division" placeholder="Ej. B">
       </div>
       <div class="field full" id="field-member-extra-maestro" style="display:none;">
         <label>Materia / Área</label>
@@ -257,6 +364,47 @@
     <div class="form-actions">
       <button class="btn btn-primary" onclick="saveMember(event)">Guardar Socio</button>
       <button class="btn btn-ghost" onclick="closeModal('modalMember')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NUEVO USUARIO -->
+<div class="modal" id="modalUsuario">
+  <div class="modal-card glass">
+    <h2>Nuevo Usuario del Sistema</h2>
+    <div class="form-grid">
+      <div class="field full">
+        <label>Nombre de usuario</label>
+        <input type="text" id="f-usuario-username" placeholder="Ej. martin">
+      </div>
+      <div class="field full">
+        <label>Contraseña</label>
+        <input type="password" id="f-usuario-password" placeholder="••••••••">
+      </div>
+      <div class="field full">
+        <label>Nombre completo</label>
+        <input type="text" id="f-usuario-nombre" placeholder="Nombre y apellido">
+      </div>
+      <div class="field">
+        <label>Rol</label>
+        <select id="f-usuario-rol">
+          <option value="ADMIN">Administrador</option>
+          <option value="BIBLIOTECARIO">Bibliotecaria</option>
+          <option value="ENCARGADO" selected>Encargado/a</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Turno</label>
+        <select id="f-usuario-turno">
+          <option value="MAÑANA">Mañana</option>
+          <option value="TARDE">Tarde</option>
+          <option value="CESPA">CESPA</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveUsuario(event)">Crear Usuario</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalUsuario')">Cancelar</button>
     </div>
   </div>
 </div>
