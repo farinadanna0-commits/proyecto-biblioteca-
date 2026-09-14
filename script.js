@@ -891,3 +891,4 @@ function renderAll(){
 }
 
 checkSession();
+console.log('Firebase está conectado');
