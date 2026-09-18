@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Biblioteca Central · Sistema de Gestión</title>
+<script>
+  (function(){
+    try {
+      if(localStorage.getItem('biblioteca_theme') === 'dark'){
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    } catch(e){}
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
@@ -41,7 +50,8 @@
       <p>Gestión moderna de préstamos, libros y socios</p>
     </div>
     <div class="head-actions">
-      <span class="mono" id="currentUserInfo" style="color:rgba(255,255,255,0.85); font-size:0.75rem; margin-right:2px;"></span>
+      <span class="mono" id="currentUserInfo" style="color:var(--ink-soft); font-size:0.75rem; margin-right:2px;"></span>
+      <button class="btn-icon" id="themeToggleBtn" onclick="toggleTheme()" title="Cambiar a modo oscuro" aria-label="Cambiar tema claro/oscuro">🌙</button>
       <button class="btn btn-primary" onclick="openModal('modalLoan', event)">+ Préstamo</button>
       <button class="btn btn-ghost" onclick="doLogout(event)">Salir</button>
     </div>
@@ -154,7 +164,9 @@
     <div class="filters" id="memberFilters" style="margin-bottom:14px;">
       <button class="filter active" onclick="setMemberFilter('todos', this)">Todos</button>
       <button class="filter" onclick="setMemberFilter('alumno', this)">Alumnos</button>
-      <button class="filter" onclick="setMemberFilter('maestro', this)">Maestros</button>
+      <button class="filter" onclick="setMemberFilter('maestro', this)">Profesores</button>
+      <button class="filter" onclick="setMemberFilter('socio', this)">Socios</button>
+      <button class="filter" onclick="setMemberFilter('no-socio', this)">No Socios</button>
     </div>
     <div class="list-grid" id="membersList"></div>
   </section>
@@ -217,12 +229,28 @@
     <h2>Registrar Nuevo Préstamo</h2>
     <div class="form-grid">
       <div class="field full">
-        <label>Seleccionar Libro</label>
-        <select id="f-loan-book"></select>
+        <label>Buscar Libro</label>
+        <div class="search-select">
+          <input type="text" id="f-loan-book-search" placeholder="Buscar por título o autor..." autocomplete="off" oninput="renderLoanBookOptions()" onfocus="renderLoanBookOptions()">
+          <input type="hidden" id="f-loan-book">
+          <div class="search-select-list" id="loanBookOptions"></div>
+        </div>
       </div>
       <div class="field full">
-        <label>Seleccionar Socio</label>
-        <select id="f-loan-member"></select>
+        <label>¿A quién se presta?</label>
+        <div class="type-toggle" id="loanPersonTypeToggle">
+          <button type="button" class="type-opt active" id="loanTypeBtn-socio" onclick="setLoanPersonType('socio')">💳 Socios</button>
+          <button type="button" class="type-opt" id="loanTypeBtn-alumno" onclick="setLoanPersonType('alumno')">🎓 Alumnos</button>
+          <button type="button" class="type-opt" id="loanTypeBtn-maestro" onclick="setLoanPersonType('maestro')">🧑‍🏫 Profesores</button>
+        </div>
+      </div>
+      <div class="field full">
+        <label>Buscar Persona</label>
+        <div class="search-select">
+          <input type="text" id="f-loan-member-search" placeholder="Buscar por nombre o DNI..." autocomplete="off" oninput="renderLoanMemberOptions()" onfocus="renderLoanMemberOptions()">
+          <input type="hidden" id="f-loan-member">
+          <div class="search-select-list" id="loanMemberOptions"></div>
+        </div>
       </div>
       <div class="field">
         <label>Fecha Préstamo</label>
@@ -329,7 +357,14 @@
         <label>Tipo de Socio</label>
         <div class="type-toggle">
           <button type="button" class="type-opt active" id="typeBtn-alumno" onclick="setMemberType('alumno')">🎓 Alumno</button>
-          <button type="button" class="type-opt" id="typeBtn-maestro" onclick="setMemberType('maestro')">🧑‍🏫 Maestro</button>
+          <button type="button" class="type-opt" id="typeBtn-maestro" onclick="setMemberType('maestro')">🧑‍🏫 Profesor</button>
+        </div>
+      </div>
+      <div class="field full">
+        <label>Vínculo con la biblioteca</label>
+        <div class="type-toggle">
+          <button type="button" class="type-opt active" id="socioBtn-si" onclick="setEsSocio(true)">💳 Socio (paga cuota)</button>
+          <button type="button" class="type-opt" id="socioBtn-no" onclick="setEsSocio(false)">🆓 No socio</button>
         </div>
       </div>
       <div class="field full">

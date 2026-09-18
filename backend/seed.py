@@ -71,14 +71,19 @@ with app.app_context():
         s1 = Socio(
             tipo='maestro', nombre_completo='Carlos Gómez', dni='38901234',
             telefono='555-0192', email='carlos@mail.com', materia='Historia',
-            estado_plan='al_dia',
+            estado_plan='al_dia', es_socio=True,
         )
         s2 = Socio(
             tipo='alumno', nombre_completo='Lucía Fernández', dni='40123456',
             telefono='555-0143', email='lucia@mail.com', curso='4° Año',
-            division='A', estado_plan='al_dia',
+            division='A', estado_plan='al_dia', es_socio=True,
         )
-        db.session.add_all([s1, s2])
+        s3 = Socio(
+            tipo='alumno', nombre_completo='Tomás Ibarra', dni='41987654',
+            telefono='555-0177', email='tomas@mail.com', curso='2° Año',
+            division='B', estado_plan='al_dia', es_socio=False,
+        )
+        db.session.add_all([s1, s2, s3])
         db.session.commit()
 
     print('Datos de demostración cargados correctamente.')

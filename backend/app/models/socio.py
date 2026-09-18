@@ -19,6 +19,9 @@ class Socio(db.Model):
     division = db.Column(db.String(20))    # si es alumno
     materia = db.Column(db.String(80))     # si es maestro
     estado_plan = db.Column(db.String(20), nullable=False, default='al_dia')
+    # Distingue a los socios que pagan cuota (privilegios) de las personas
+    # (alumnos/profesores) a las que igual se les presta libros sin ser socios.
+    es_socio = db.Column(db.Boolean, nullable=False, default=True)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -33,6 +36,7 @@ class Socio(db.Model):
             'division': self.division,
             'materia': self.materia,
             'estado_plan': self.estado_plan,
+            'es_socio': bool(self.es_socio),
         }
 
     def __repr__(self):

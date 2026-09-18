@@ -55,5 +55,25 @@ def create_app(config_class=Config):
 
     with app.app_context():
         db.create_all()
+        _migrar_columnas_faltantes()
 
     return app
+
+
+def _migrar_columnas_faltantes():
+    """Mini-migración automática para bases de datos SQLite ya existentes:
+    agrega columnas nuevas del modelo (por ejemplo 'es_socio') sin borrar
+    los datos cargados previamente. No reemplaza a una herramienta de
+    migraciones real, pero alcanza para este proyecto."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if 'socios' not in inspector.get_table_names():
+        return
+    columnas = {c['name'] for c in inspector.get_columns('socios')}
+    if 'es_socio' not in columnas:
+        with db.engine.connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE socios ADD COLUMN es_socio BOOLEAN NOT NULL DEFAULT 1"
+            ))
+            conn.commit()

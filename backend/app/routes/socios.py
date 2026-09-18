@@ -17,6 +17,7 @@ def listar_socios():
     dni = request.args.get('dni')
     tipo = request.args.get('tipo')
     estado_plan = request.args.get('estado_plan')
+    es_socio = request.args.get('es_socio')
 
     if nombre:
         query = query.filter(Socio.nombre_completo.ilike(f'%{nombre}%'))
@@ -26,6 +27,8 @@ def listar_socios():
         query = query.filter(Socio.tipo == tipo)
     if estado_plan:
         query = query.filter(Socio.estado_plan == estado_plan)
+    if es_socio is not None:
+        query = query.filter(Socio.es_socio == (es_socio.strip().lower() not in ('0', 'false', 'no', '')))
 
     socios = query.order_by(Socio.nombre_completo).all()
     return jsonify([s.to_dict() for s in socios])
@@ -49,7 +52,11 @@ def crear_socio():
         return jsonify({'error': 'Nombre completo y DNI son obligatorios'}), 400
 
     if Socio.query.filter_by(dni=dni).first():
-        return jsonify({'error': 'Ya existe un socio registrado con ese DNI'}), 409
+        return jsonify({'error': 'Ya existe una persona registrada con ese DNI'}), 409
+
+    es_socio = data.get('es_socio', True)
+    if isinstance(es_socio, str):
+        es_socio = es_socio.strip().lower() not in ('0', 'false', 'no', '')
 
     socio = Socio(
         tipo=data.get('tipo') or 'alumno',
@@ -61,6 +68,7 @@ def crear_socio():
         division=data.get('division'),
         materia=data.get('materia'),
         estado_plan='al_dia',
+        es_socio=bool(es_socio),
     )
     db.session.add(socio)
     db.session.commit()
@@ -80,6 +88,12 @@ def actualizar_socio(socio_id):
 
     if 'estado_plan' in data and data['estado_plan'] in ESTADOS_PLAN:
         socio.estado_plan = data['estado_plan']
+
+    if 'es_socio' in data:
+        valor = data['es_socio']
+        if isinstance(valor, str):
+            valor = valor.strip().lower() not in ('0', 'false', 'no', '')
+        socio.es_socio = bool(valor)
 
     db.session.commit()
     return jsonify(socio.to_dict())

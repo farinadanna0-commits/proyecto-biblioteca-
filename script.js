@@ -22,6 +22,8 @@ let activeMemberFilter = 'todos';
 let activeBookGenreFilter = 'todos';
 let activeSancionFilter = 'todos';
 let selectedMemberType = 'alumno';
+let selectedEsSocio = true;
+let loanPersonType = 'socio';
 
 // ---------------------------------------------------------------------
 // Autenticación (Módulo 8) y arranque de sesión
@@ -95,8 +97,28 @@ function checkSession(){
   document.getElementById('loginScreen').style.display = 'flex';
 }
 
+// ---------- Tema claro / oscuro ----------
+function toggleTheme(){
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  setTheme(dark ? 'light' : 'dark');
+}
+function setTheme(theme){
+  document.documentElement.setAttribute('data-theme', theme);
+  try { localStorage.setItem('biblioteca_theme', theme); } catch(e){}
+  const btn = document.getElementById('themeToggleBtn');
+  if(btn){
+    btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+    btn.title = theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
+  }
+}
+function initTheme(){
+  const saved = (() => { try { return localStorage.getItem('biblioteca_theme'); } catch(e){ return null; } })();
+  setTheme(saved === 'dark' ? 'dark' : 'light');
+}
+
 // Permite iniciar sesión presionando Enter
 document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
   ['f-login-user', 'f-login-pass'].forEach(id => {
     const el = document.getElementById(id);
     if(el){
@@ -242,7 +264,8 @@ function statusLabel(s, loan){
   return 'Activo';
 }
 
-function tipoLabel(tipo){ return tipo === 'maestro' ? 'Maestro' : 'Alumno'; }
+function tipoLabel(tipo){ return tipo === 'maestro' ? 'Profesor' : 'Alumno'; }
+function esSocioLabel(m){ return m.es_socio ? 'Socio' : 'No socio'; }
 function estadoPlanLabel(estado){
   return {al_dia: 'Al día', suspendido: 'Suspendido', bloqueado: 'Bloqueado'}[estado] || estado;
 }
@@ -254,6 +277,13 @@ function estadoEjemplarLabel(estado){
 }
 function ejemplarChipClass(estado){
   return {disponible: 'on-time', prestado: 'returned', 'dañado': 'due-soon', perdido: 'overdue'}[estado] || 'returned';
+}
+function stockAlertInfo(b){
+  const disp = b.ejemplares_disponibles;
+  const total = b.cantidad_ejemplares || 0;
+  if(disp <= 0) return {label: 'Sin stock', cls: 'overdue'};
+  if(disp === 1 || (total > 0 && disp / total <= 0.25)) return {label: 'Últimos ejemplares', cls: 'due-soon'};
+  return {label: 'Disponible', cls: 'on-time'};
 }
 function estadoDevueltoLabel(estado){
   return {buen_estado: 'Buen estado', dano_menor: 'Daño menor', dano_mayor: 'Daño mayor', perdida: 'Pérdida'}[estado] || (estado || '—');
@@ -273,30 +303,112 @@ function switchTab(tabId, evt){
 function openModal(id){
   document.getElementById(id).classList.add('open');
   if(id === 'modalLoan'){
-    populateSelects();
+    document.getElementById('f-loan-book-search').value = '';
+    document.getElementById('f-loan-book').value = '';
+    document.getElementById('f-loan-member-search').value = '';
+    document.getElementById('f-loan-member').value = '';
+    document.getElementById('loanBookOptions').classList.remove('open');
+    document.getElementById('loanMemberOptions').classList.remove('open');
+    setLoanPersonType('socio');
     document.getElementById('f-loan-start').value = todayISO();
     const d = new Date(); d.setDate(d.getDate() + 14);
     document.getElementById('f-loan-due').value = d.toISOString().slice(0,10);
   }
   if(id === 'modalMember'){
     setMemberType('alumno');
+    setEsSocio(true);
   }
 }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 
-function populateSelects(){
-  const bookSel = document.getElementById('f-loan-book');
-  const memberSel = document.getElementById('f-loan-member');
+// ---------- Buscador de Libro (Préstamos) ----------
+function renderLoanBookOptions(){
+  const term = document.getElementById('f-loan-book-search').value.trim().toLowerCase();
+  const list = document.getElementById('loanBookOptions');
+  const disponibles = books.filter(b => b.ejemplares_disponibles > 0);
+  const filtrados = term
+    ? disponibles.filter(b => b.titulo.toLowerCase().includes(term) || b.autor.toLowerCase().includes(term))
+    : disponibles;
 
-  const librosConStock = books.filter(b => b.ejemplares_disponibles > 0);
-  bookSel.innerHTML = librosConStock.length
-    ? librosConStock.map(b => `<option value="${b.id}">${b.titulo} (${b.autor}) — ${b.ejemplares_disponibles} disp.</option>`).join('')
-    : '<option value="">No hay libros con ejemplares disponibles</option>';
-
-  memberSel.innerHTML = members.length
-    ? members.map(m => `<option value="${m.id}" ${m.estado_plan !== 'al_dia' ? 'disabled' : ''}>${tipoLabel(m.tipo)} — ${m.nombre_completo} (DNI: ${m.dni})${m.estado_plan !== 'al_dia' ? ' · ' + estadoPlanLabel(m.estado_plan) : ''}</option>`).join('')
-    : '<option value="">No hay socios guardados</option>';
+  list.innerHTML = filtrados.length
+    ? filtrados.slice(0, 40).map(b => {
+        const alerta = stockAlertInfo(b);
+        const marca = alerta.cls === 'due-soon' ? ` · <span class="txt-warn">${alerta.label}</span>` : '';
+        return `
+        <div class="search-opt" onmousedown="selectLoanBook(${b.id})">
+          <strong>${b.titulo}</strong>
+          <span>${b.autor} · ${b.ejemplares_disponibles} disponible(s)${marca}</span>
+        </div>`;
+      }).join('')
+    : '<div class="search-opt empty">Sin libros disponibles que coincidan</div>';
+  list.classList.add('open');
 }
+function selectLoanBook(id){
+  const b = books.find(x => x.id === id);
+  if(!b) return;
+  document.getElementById('f-loan-book').value = id;
+  document.getElementById('f-loan-book-search').value = `${b.titulo} (${b.autor})`;
+  document.getElementById('loanBookOptions').classList.remove('open');
+  const alerta = stockAlertInfo(b);
+  if(alerta.cls === 'due-soon'){
+    showToast(`Atención: quedan pocos ejemplares de "${b.titulo}" (${b.ejemplares_disponibles} disponible/s)`, 'info');
+  }
+}
+
+// ---------- Tipo de persona a la que se presta (Socio / Alumno / Profesor) ----------
+function setLoanPersonType(tipo){
+  loanPersonType = tipo;
+  ['socio', 'alumno', 'maestro'].forEach(t => {
+    document.getElementById(`loanTypeBtn-${t}`).classList.toggle('active', t === tipo);
+  });
+  document.getElementById('f-loan-member').value = '';
+  document.getElementById('f-loan-member-search').value = '';
+  renderLoanMemberOptions();
+}
+
+// ---------- Buscador de Persona (Socio / Alumno / Profesor) ----------
+function renderLoanMemberOptions(){
+  const term = document.getElementById('f-loan-member-search').value.trim().toLowerCase();
+  const list = document.getElementById('loanMemberOptions');
+
+  const pool = loanPersonType === 'socio'
+    ? members.filter(m => m.es_socio)
+    : members.filter(m => (m.tipo || 'alumno') === loanPersonType);
+
+  const filtrados = term
+    ? pool.filter(m => m.nombre_completo.toLowerCase().includes(term) || (m.dni || '').includes(term))
+    : pool;
+
+  const etiquetaVacia = loanPersonType === 'socio' ? 'socios' : (loanPersonType === 'maestro' ? 'profesores' : 'alumnos');
+
+  list.innerHTML = filtrados.length
+    ? filtrados.slice(0, 40).map(m => {
+        const bloqueado = m.estado_plan !== 'al_dia';
+        return `
+        <div class="search-opt ${bloqueado ? 'search-opt-blocked' : ''}" onmousedown="selectLoanMember(${m.id}, ${bloqueado})">
+          <strong>${m.nombre_completo}</strong>
+          <span>DNI ${m.dni} · ${tipoLabel(m.tipo)} · ${m.es_socio ? 'Socio' : 'No socio'}${bloqueado ? ' · ' + estadoPlanLabel(m.estado_plan) : ''}</span>
+        </div>`;
+      }).join('')
+    : `<div class="search-opt empty">No hay ${etiquetaVacia} que coincidan</div>`;
+  list.classList.add('open');
+}
+function selectLoanMember(id, bloqueado){
+  if(bloqueado){
+    showToast('Esta persona no está al día y no puede recibir préstamos', 'danger');
+    return;
+  }
+  const m = members.find(x => x.id === id);
+  if(!m) return;
+  document.getElementById('f-loan-member').value = id;
+  document.getElementById('f-loan-member-search').value = `${m.nombre_completo} (DNI ${m.dni})`;
+  document.getElementById('loanMemberOptions').classList.remove('open');
+}
+document.addEventListener('click', (e) => {
+  if(!e.target.closest('.search-select')){
+    document.querySelectorAll('.search-select-list.open').forEach(l => l.classList.remove('open'));
+  }
+});
 
 // ---------- Tipo de Socio (Alumno / Maestro) ----------
 function setMemberType(tipo){
@@ -306,6 +418,13 @@ function setMemberType(tipo){
   document.getElementById('field-member-extra-alumno').style.display = tipo === 'alumno' ? 'flex' : 'none';
   document.getElementById('field-member-division').style.display = tipo === 'alumno' ? 'flex' : 'none';
   document.getElementById('field-member-extra-maestro').style.display = tipo === 'maestro' ? 'flex' : 'none';
+}
+
+// ---------- Vínculo: Socio (paga cuota) / No socio ----------
+function setEsSocio(esSocio){
+  selectedEsSocio = esSocio;
+  document.getElementById('socioBtn-si').classList.toggle('active', esSocio);
+  document.getElementById('socioBtn-no').classList.toggle('active', !esSocio);
 }
 
 // ---------------------------------------------------------------------
@@ -319,7 +438,7 @@ async function saveLoan(evt){
   const vencimiento = document.getElementById('f-loan-due').value;
 
   if(!libroId || !socioId || !vencimiento){
-    showToast('Completá todos los campos del préstamo', 'danger');
+    showToast('Elegí un libro y una persona antes de registrar el préstamo', 'danger');
     return;
   }
 
@@ -452,7 +571,7 @@ async function saveMember(evt){
   const division = document.getElementById('f-member-division').value.trim();
   const subject = document.getElementById('f-member-subject').value.trim();
 
-  if(!nombre || !dni){ showToast('Ingresá nombre y DNI del socio', 'danger'); return; }
+  if(!nombre || !dni){ showToast('Ingresá nombre y DNI de la persona', 'danger'); return; }
 
   try {
     await apiFetch('/socios', {
@@ -460,12 +579,14 @@ async function saveMember(evt){
       body: JSON.stringify({
         nombre_completo: nombre, dni, telefono: phone, email,
         tipo, curso: course, division, materia: subject,
+        es_socio: selectedEsSocio,
       }),
     });
     closeModal('modalMember');
     document.querySelectorAll('#modalMember input').forEach(i => i.value = '');
     setMemberType('alumno');
-    showToast(`${tipoLabel(tipo)} registrado correctamente`, 'success');
+    setEsSocio(true);
+    showToast(`${tipoLabel(tipo)} ${selectedEsSocio ? 'socio' : 'no socio'} registrado correctamente`, 'success');
     await cargarDatosIniciales();
   } catch(err){}
 }
@@ -754,7 +875,9 @@ function renderBooks(){
     return;
   }
 
-  container.innerHTML = list.map(b => `
+  container.innerHTML = list.map(b => {
+    const alerta = stockAlertInfo(b);
+    return `
     <div class="ticket glass">
       <div class="edge ${b.ejemplares_disponibles > 0 ? 'on-time' : 'overdue'}"></div>
       <div class="ticket-main">
@@ -762,6 +885,7 @@ function renderBooks(){
         <div class="sub">Autor: ${b.autor || 'Desconocido'} | Género: ${b.genero || 'N/A'} | ${b.categoria || 'Sin categoría'}</div>
         <span class="badge">ISBN: ${b.isbn || 'Sin ISBN'}</span>
         <span class="badge" style="margin-left:6px;">${b.ubicacion_fisica || 'Sin ubicación'}</span>
+        <span class="status-chip ${alerta.cls}" style="margin-left:6px;">${alerta.label}</span>
         <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
           ${(b.ejemplares || []).map(e => `<span class="status-chip ${ejemplarChipClass(e.estado)}" style="cursor:${e.estado === 'prestado' ? 'default' : 'pointer'};" title="Ejemplar #${e.numero_ejemplar}: ${estadoEjemplarLabel(e.estado)}${e.estado === 'prestado' ? '' : ' (click para cambiar estado)'}" onclick="ciclarEstadoEjemplar(${e.id}, '${e.estado}')">#${e.numero_ejemplar} ${estadoEjemplarLabel(e.estado)}</span>`).join('')}
         </div>
@@ -771,7 +895,8 @@ function renderBooks(){
         <button class="action-link danger" onclick="deleteBook(${b.id})">Eliminar</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function setMemberFilter(key, btn){
@@ -788,7 +913,9 @@ function renderMembers(){
     (m.dni || '').includes(query) ||
     (m.email || '').toLowerCase().includes(query)
   );
-  if(activeMemberFilter !== 'todos') list = list.filter(m => (m.tipo || 'alumno') === activeMemberFilter);
+  if(activeMemberFilter === 'socio') list = list.filter(m => m.es_socio);
+  else if(activeMemberFilter === 'no-socio') list = list.filter(m => !m.es_socio);
+  else if(activeMemberFilter !== 'todos') list = list.filter(m => (m.tipo || 'alumno') === activeMemberFilter);
 
   const container = document.getElementById('membersList');
   if(!container) return;
@@ -809,12 +936,13 @@ function renderMembers(){
         <div class="title">${m.nombre_completo}</div>
         <div class="sub">DNI: ${m.dni} | Tel: ${m.telefono || 'S/N'}</div>
         <span class="badge">${tipoLabel(tipo)}</span>
+        <span class="badge ${m.es_socio ? 'badge-socio' : 'badge-no-socio'}" style="margin-left:6px;">${esSocioLabel(m)}</span>
         <span class="badge" style="margin-left:6px;">${extra}</span>
-        <span class="badge" style="margin-left:6px;">${estadoPlanLabel(m.estado_plan)}</span>
+        ${m.es_socio ? `<span class="badge" style="margin-left:6px;">${estadoPlanLabel(m.estado_plan)}</span>` : ''}
       </div>
       <div class="ticket-stub">
         <span class="badge mono">${m.email || 'Sin correo'}</span>
-        <button class="action-link" onclick="toggleBloqueoSocio(${m.id}, '${m.estado_plan}')">${m.estado_plan === 'bloqueado' ? 'Desbloquear' : 'Bloquear'}</button>
+        ${m.es_socio ? `<button class="action-link" onclick="toggleBloqueoSocio(${m.id}, '${m.estado_plan}')">${m.estado_plan === 'bloqueado' ? 'Desbloquear' : 'Bloquear'}</button>` : ''}
         <button class="action-link danger" onclick="deleteMember(${m.id})">Eliminar</button>
       </div>
     </div>
