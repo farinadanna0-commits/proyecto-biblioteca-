@@ -316,6 +316,26 @@ h3.section-title{
 .filter:hover{ color:var(--ink); }
 .filter.active{ box-shadow:var(--pressed); color:var(--cobalt-deep); font-weight:700; }
 
+/* ---------- Filtros avanzados (Socios) ---------- */
+.advanced-filters{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  gap:16px;
+  padding:18px 20px;
+  margin-bottom:16px;
+}
+.advanced-filters .filters-label{
+  width:100%;
+  font-size:0.72rem;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.05em;
+  color:var(--cobalt-deep);
+}
+.advanced-filters .field{ min-width:150px; flex:1 1 150px; margin:0; }
+.advanced-filters .btn{ flex-shrink:0; }
+
 /* ---------- Botones ---------- */
 .btn{
   font-family:'Space Grotesk', sans-serif;
@@ -389,6 +409,7 @@ h3.section-title{
   transition:box-shadow 0.15s ease;
 }
 .field input:focus, .field select:focus{ box-shadow:inset 5px 5px 10px var(--sh-dark), inset -5px -5px 10px var(--sh-light), 0 0 0 2px var(--cobalt); }
+.field input:disabled{ opacity:0.55; cursor:not-allowed; }
 .form-actions{ display:flex; gap:12px; margin-top:26px; }
 
 /* ---------- Buscador con lista desplegable (libro / persona) ---------- */
@@ -426,6 +447,54 @@ h3.section-title{
 .search-opt-blocked:hover{ box-shadow:none; }
 .txt-warn{ color:var(--amber); font-weight:700; }
 .txt-danger{ color:var(--red); font-weight:700; }
+
+/* ---------- Tabla de datos (Socios) ---------- */
+.table-wrap{
+  overflow-x:auto;
+  border-radius:20px;
+  background:var(--bg);
+  box-shadow:var(--raised);
+}
+.data-table{ width:100%; border-collapse:collapse; }
+.data-table thead th{
+  text-align:left;
+  padding:14px 18px;
+  font-size:0.72rem;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.04em;
+  color:var(--ink-soft);
+  white-space:nowrap;
+}
+.data-table tbody tr{ cursor:pointer; transition:background-color 0.15s ease; }
+.data-table tbody tr:hover{ background-color:var(--cobalt-bg); }
+.data-table tbody td{
+  padding:14px 18px;
+  font-size:0.88rem;
+  color:var(--ink);
+  border-top:1px solid rgba(139,147,167,0.18);
+  white-space:nowrap;
+}
+.data-table tbody td strong{ font-weight:700; }
+.empty-state-cell{ text-align:center; padding:40px 20px; color:var(--ink-soft); font-weight:600; cursor:default; white-space:normal; }
+.empty-state-cell:hover{ background:none !important; }
+
+/* ---------- Modal de detalle (clave / valor) ---------- */
+.detail-grid{ display:flex; flex-direction:column; gap:12px; margin-bottom:6px; }
+.detail-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  border-radius:12px;
+  background:var(--bg);
+  box-shadow:var(--pressed);
+  font-size:0.88rem;
+  font-weight:600;
+  color:var(--ink);
+}
+.detail-label{ color:var(--ink-soft); font-weight:700; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.03em; }
 
 /* ---------- Tickets / Listas ---------- */
 .list-grid{ display:flex; flex-direction:column; gap:16px; }

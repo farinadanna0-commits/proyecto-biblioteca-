@@ -18,10 +18,13 @@ let usuarios = [];
 let dashboardResumen = null;
 
 let activeLoanFilter = 'todos';
-let activeMemberFilter = 'todos';
+let memberFilterTipo = 'todos';
+let memberFilterVinculo = 'todos';
+let memberFilterEstado = 'todos';
 let activeBookGenreFilter = 'todos';
 let activeSancionFilter = 'todos';
 let selectedMemberType = 'alumno';
+let editingMemberId = null;
 let selectedEsSocio = true;
 let loanPersonType = 'socio';
 
@@ -315,6 +318,11 @@ function openModal(id){
     document.getElementById('f-loan-due').value = d.toISOString().slice(0,10);
   }
   if(id === 'modalMember'){
+    editingMemberId = null;
+    document.getElementById('modalMemberTitle').textContent = 'Registrar Nuevo Socio';
+    document.getElementById('modalMemberSaveBtn').textContent = 'Guardar Socio';
+    document.querySelectorAll('#modalMember input').forEach(i => i.value = '');
+    document.getElementById('f-member-dni').disabled = false;
     setMemberType('alumno');
     setEsSocio(true);
   }
@@ -573,20 +581,26 @@ async function saveMember(evt){
 
   if(!nombre || !dni){ showToast('Ingresá nombre y DNI de la persona', 'danger'); return; }
 
+  const payload = {
+    nombre_completo: nombre, dni, telefono: phone, email,
+    tipo, curso: course, division, materia: subject,
+    es_socio: selectedEsSocio,
+  };
+
   try {
-    await apiFetch('/socios', {
-      method: 'POST',
-      body: JSON.stringify({
-        nombre_completo: nombre, dni, telefono: phone, email,
-        tipo, curso: course, division, materia: subject,
-        es_socio: selectedEsSocio,
-      }),
-    });
+    if(editingMemberId){
+      await apiFetch(`/socios/${editingMemberId}`, {method: 'PUT', body: JSON.stringify(payload)});
+      showToast('Socio actualizado correctamente', 'success');
+    } else {
+      await apiFetch('/socios', {method: 'POST', body: JSON.stringify(payload)});
+      showToast(`${tipoLabel(tipo)} ${selectedEsSocio ? 'socio' : 'no socio'} registrado correctamente`, 'success');
+    }
     closeModal('modalMember');
     document.querySelectorAll('#modalMember input').forEach(i => i.value = '');
+    document.getElementById('f-member-dni').disabled = false;
+    editingMemberId = null;
     setMemberType('alumno');
     setEsSocio(true);
-    showToast(`${tipoLabel(tipo)} ${selectedEsSocio ? 'socio' : 'no socio'} registrado correctamente`, 'success');
     await cargarDatosIniciales();
   } catch(err){}
 }
@@ -899,11 +913,19 @@ function renderBooks(){
   }).join('');
 }
 
-function setMemberFilter(key, btn){
-  activeMemberFilter = key;
-  document.querySelectorAll('#memberFilters .filter').forEach(f => f.classList.remove('active'));
-  btn.classList.add('active');
+function applyMemberFilters(){
+  memberFilterTipo = document.getElementById('memberFilterTipo').value;
+  memberFilterVinculo = document.getElementById('memberFilterVinculo').value;
+  memberFilterEstado = document.getElementById('memberFilterEstado').value;
   renderMembers();
+}
+
+function resetMemberFilters(){
+  document.getElementById('memberFilterTipo').value = 'todos';
+  document.getElementById('memberFilterVinculo').value = 'todos';
+  document.getElementById('memberFilterEstado').value = 'todos';
+  document.getElementById('memberSearch').value = '';
+  applyMemberFilters();
 }
 
 function renderMembers(){
@@ -913,41 +935,100 @@ function renderMembers(){
     (m.dni || '').includes(query) ||
     (m.email || '').toLowerCase().includes(query)
   );
-  if(activeMemberFilter === 'socio') list = list.filter(m => m.es_socio);
-  else if(activeMemberFilter === 'no-socio') list = list.filter(m => !m.es_socio);
-  else if(activeMemberFilter !== 'todos') list = list.filter(m => (m.tipo || 'alumno') === activeMemberFilter);
+  if(memberFilterTipo !== 'todos') list = list.filter(m => (m.tipo || 'alumno') === memberFilterTipo);
+  if(memberFilterVinculo === 'socio') list = list.filter(m => m.es_socio);
+  else if(memberFilterVinculo === 'no-socio') list = list.filter(m => !m.es_socio);
+  if(memberFilterEstado !== 'todos') list = list.filter(m => m.es_socio && m.estado_plan === memberFilterEstado);
 
   const container = document.getElementById('membersList');
   if(!container) return;
   if(!list.length){
-    container.innerHTML = '<div class="empty-state glass">No se encontraron socios registrados.</div>';
+    container.innerHTML = '<tr><td colspan="4" class="empty-state-cell">No se encontraron socios registrados.</td></tr>';
     return;
   }
 
   container.innerHTML = list.map(m => {
     const tipo = m.tipo || 'alumno';
-    const extra = tipo === 'maestro'
-      ? (m.materia ? `Materia: ${m.materia}` : 'Maestro/a')
-      : (m.curso ? `Curso: ${m.curso}${m.division ? ' "' + m.division + '"' : ''}` : 'Alumno/a');
     return `
-    <div class="ticket glass">
-      <div class="edge ${estadoPlanEdgeClass(m.estado_plan)}"></div>
-      <div class="ticket-main">
-        <div class="title">${m.nombre_completo}</div>
-        <div class="sub">DNI: ${m.dni} | Tel: ${m.telefono || 'S/N'}</div>
-        <span class="badge">${tipoLabel(tipo)}</span>
-        <span class="badge ${m.es_socio ? 'badge-socio' : 'badge-no-socio'}" style="margin-left:6px;">${esSocioLabel(m)}</span>
-        <span class="badge" style="margin-left:6px;">${extra}</span>
-        ${m.es_socio ? `<span class="badge" style="margin-left:6px;">${estadoPlanLabel(m.estado_plan)}</span>` : ''}
-      </div>
-      <div class="ticket-stub">
-        <span class="badge mono">${m.email || 'Sin correo'}</span>
-        ${m.es_socio ? `<button class="action-link" onclick="toggleBloqueoSocio(${m.id}, '${m.estado_plan}')">${m.estado_plan === 'bloqueado' ? 'Desbloquear' : 'Bloquear'}</button>` : ''}
-        <button class="action-link danger" onclick="deleteMember(${m.id})">Eliminar</button>
-      </div>
-    </div>
-  `;
+    <tr onclick="verDetalleSocio(${m.id})">
+      <td><strong>${m.nombre_completo}</strong></td>
+      <td>${tipoLabel(tipo)}</td>
+      <td><span class="badge ${m.es_socio ? 'badge-socio' : 'badge-no-socio'}">${esSocioLabel(m)}</span></td>
+      <td>${m.es_socio ? `<span class="status-chip ${estadoPlanEdgeClass(m.estado_plan)}">${estadoPlanLabel(m.estado_plan)}</span>` : '—'}</td>
+    </tr>`;
   }).join('');
+}
+
+// ---------- Modal de detalle de socio ----------
+let detalleSocioId = null;
+
+function verDetalleSocio(id){
+  const m = members.find(x => x.id === id);
+  if(!m) return;
+  detalleSocioId = id;
+  const tipo = m.tipo || 'alumno';
+
+  document.getElementById('detalleSocioNombre').textContent = m.nombre_completo;
+  document.getElementById('detalleSocioDni').textContent = m.dni;
+  document.getElementById('detalleSocioTelefono').textContent = m.telefono || 'S/N';
+  document.getElementById('detalleSocioEmail').textContent = m.email || 'Sin correo';
+  document.getElementById('detalleSocioTipo').textContent = tipoLabel(tipo);
+  document.getElementById('detalleSocioVinculo').textContent = esSocioLabel(m);
+
+  document.getElementById('detalleSocioExtraLabel').textContent = tipo === 'maestro' ? 'Materia' : 'Curso';
+  document.getElementById('detalleSocioExtra').textContent = tipo === 'maestro'
+    ? (m.materia || '—')
+    : `${m.curso || '—'}${m.division ? ' "' + m.division + '"' : ''}`;
+
+  const estadoRow = document.getElementById('detalleSocioEstadoRow');
+  const toggleBtn = document.getElementById('detalleSocioToggleBtn');
+  if(m.es_socio){
+    estadoRow.style.display = 'flex';
+    document.getElementById('detalleSocioEstado').textContent = estadoPlanLabel(m.estado_plan);
+    toggleBtn.style.display = '';
+    toggleBtn.textContent = m.estado_plan === 'bloqueado' ? 'Desbloquear' : 'Bloquear';
+  } else {
+    estadoRow.style.display = 'none';
+    toggleBtn.style.display = 'none';
+  }
+
+  openModal('modalSocioDetalle');
+}
+
+function editarSocioDesdeDetalle(){
+  const m = members.find(x => x.id === detalleSocioId);
+  if(!m) return;
+  closeModal('modalSocioDetalle');
+  openModal('modalMember');
+
+  editingMemberId = m.id;
+  document.getElementById('modalMemberTitle').textContent = 'Editar Socio';
+  document.getElementById('modalMemberSaveBtn').textContent = 'Guardar Cambios';
+
+  document.getElementById('f-member-name').value = m.nombre_completo || '';
+  document.getElementById('f-member-dni').value = m.dni || '';
+  document.getElementById('f-member-dni').disabled = true;
+  document.getElementById('f-member-phone').value = m.telefono || '';
+  document.getElementById('f-member-email').value = m.email || '';
+  document.getElementById('f-member-course').value = m.curso || '';
+  document.getElementById('f-member-division').value = m.division || '';
+  document.getElementById('f-member-subject').value = m.materia || '';
+
+  setMemberType(m.tipo || 'alumno');
+  setEsSocio(!!m.es_socio);
+}
+
+function toggleBloqueoDesdeDetalle(){
+  const m = members.find(x => x.id === detalleSocioId);
+  if(!m) return;
+  closeModal('modalSocioDetalle');
+  toggleBloqueoSocio(m.id, m.estado_plan);
+}
+
+function eliminarSocioDesdeDetalle(){
+  const id = detalleSocioId;
+  closeModal('modalSocioDetalle');
+  deleteMember(id);
 }
 
 function renderSanciones(){
