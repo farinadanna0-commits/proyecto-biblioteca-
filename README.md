@@ -1,4 +1,4 @@
-# Biblioteca Colegio Secundario San Carlos
+# Biblioteca
 
 Sistema de gestión de biblioteca — proyecto académico (Tecnicatura Superior
 en Desarrollo de Software, CESPA). Implementa los 9 módulos del análisis
