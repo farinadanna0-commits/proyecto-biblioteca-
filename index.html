@@ -25,7 +25,7 @@
 <div class="login-screen" id="loginScreen">
   <div class="login-card glass">
   
-    <h1 class="login-title">Biblioteca Colegio Secundario San Carlos</h1>
+    <h1 class="login-title">Biblioteca</h1>
     <p class="login-sub">Ingresá con tu usuario y contraseña</p>
     <div class="field full">
       <label>Usuario</label>
@@ -118,7 +118,14 @@
     </div>
 
     <h3 class="section-title">Préstamos Próximos o Vencidos</h3>
-    <div class="list-grid" id="homeRecentLoans"></div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr><th>Libro</th><th>Socio</th><th>Vence</th><th>Estado</th></tr>
+        </thead>
+        <tbody id="homeRecentLoans"></tbody>
+      </table>
+    </div>
   </section>
 
   <!-- TAB: LOANS -->
@@ -128,15 +135,29 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4F57" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" id="loanSearch" placeholder="Buscar préstamo por libro o socio..." oninput="renderLoans()">
       </div>
-      <div class="filters" id="loanFilters">
-        <button class="filter active" onclick="setLoanFilter('todos', this)">Todos</button>
-        <button class="filter" onclick="setLoanFilter('on-time', this)">Activos</button>
-        <button class="filter" onclick="setLoanFilter('due-soon', this)">Por Vencer</button>
-        <button class="filter" onclick="setLoanFilter('overdue', this)">Vencidos</button>
-        <button class="filter" onclick="setLoanFilter('returned', this)">Devueltos</button>
-      </div>
     </div>
-    <div class="list-grid" id="loansList"></div>
+    <div class="advanced-filters glass" id="loanFilters">
+      <span class="filters-label">Filtros avanzados</span>
+      <div class="field">
+        <label>Estado</label>
+        <select id="loanFilterEstado" onchange="applyLoanFilters()">
+          <option value="todos">Todos</option>
+          <option value="on-time">Activos</option>
+          <option value="due-soon">Por vencer</option>
+          <option value="overdue">Vencidos</option>
+          <option value="returned">Devueltos</option>
+        </select>
+      </div>
+      <button class="btn btn-ghost" onclick="resetLoanFilters()">Limpiar filtros</button>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr><th>Libro</th><th>Socio</th><th>Vence</th><th>Estado</th></tr>
+        </thead>
+        <tbody id="loansList"></tbody>
+      </table>
+    </div>
   </section>
 
   <!-- TAB: BOOKS -->
@@ -145,11 +166,43 @@
       <div class="search-box glass">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4F57" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" id="bookSearch" placeholder="Buscar libro por título, autor, ISBN o categoría..." oninput="renderBooks()">
+        <button type="button" class="mic-btn" id="bookSearchMicBtn" onclick="buscarPorVoz('bookSearch', renderBooks)" title="Buscar por voz" aria-label="Buscar por voz">🎤</button>
       </div>
       <button class="btn btn-primary" onclick="openModal('modalBook', event)">+ Libro</button>
     </div>
-    <div class="filters" id="bookGenreFilters" style="margin-bottom:14px;"></div>
-    <div class="list-grid" id="booksList"></div>
+    <div class="advanced-filters glass" id="bookFilters">
+      <span class="filters-label">Filtros avanzados</span>
+      <div class="field">
+        <label>Género</label>
+        <select id="bookFilterGenero" onchange="applyBookFilters()">
+          <option value="todos">Todos</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Categoría</label>
+        <select id="bookFilterCategoria" onchange="applyBookFilters()">
+          <option value="todos">Todas</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Disponibilidad</label>
+        <select id="bookFilterDisponibilidad" onchange="applyBookFilters()">
+          <option value="todos">Todas</option>
+          <option value="disponible">Disponible</option>
+          <option value="ultimos">Últimos ejemplares</option>
+          <option value="sin-stock">Sin stock</option>
+        </select>
+      </div>
+      <button class="btn btn-ghost" onclick="resetBookFilters()">Limpiar filtros</button>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr><th>Título</th><th>Autor</th><th>Categoría</th><th>Disponibilidad</th></tr>
+        </thead>
+        <tbody id="booksList"></tbody>
+      </table>
+    </div>
   </section>
 
   <!-- TAB: MEMBERS -->
@@ -218,6 +271,7 @@
       <div class="field" style="min-width:200px;">
         <label>Tipo de reporte</label>
         <select id="f-reporte-tipo">
+          <option value="prestados-actualmente">Préstamos actuales (todo lo prestado)</option>
           <option value="vencidos">Préstamos vencidos</option>
           <option value="socios-atrasados">Socios con atrasos</option>
           <option value="mas-solicitados">Libros más solicitados</option>
@@ -234,9 +288,20 @@
         <input type="date" id="f-reporte-hasta">
       </div>
       <button class="btn btn-primary" onclick="generarReporte(event)" style="align-self:flex-end;">Generar</button>
+      <button class="btn btn-ghost" onclick="descargarReportePDF()" style="align-self:flex-end;">⬇ Descargar PDF</button>
     </div>
+    <div id="reportePrintTitle" class="print-only">
+      <h2></h2>
+      <p></p>
+    </div>
+    <div id="reportePrintTable" class="print-only"></div>
     <div class="dash-grid" id="reporteResumen" style="display:none;"></div>
-    <div class="list-grid" id="reporteResultados"></div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead id="reporteResultadosHead"></thead>
+        <tbody id="reporteResultados"></tbody>
+      </table>
+    </div>
   </section>
 
   <!-- TAB: USUARIOS (Módulo 7, solo ADMIN) -->
@@ -260,10 +325,21 @@
       <div class="field full">
         <label>Buscar Libro</label>
         <div class="search-select">
-          <input type="text" id="f-loan-book-search" placeholder="Buscar por título o autor..." autocomplete="off" oninput="renderLoanBookOptions()" onfocus="renderLoanBookOptions()">
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="text" id="f-loan-book-search" placeholder="Buscar por título o autor..." autocomplete="off" oninput="renderLoanBookOptions()" onfocus="renderLoanBookOptions()" style="flex:1;">
+            <button type="button" class="mic-btn cam-btn" id="loanBookScanBtn" onclick="abrirEscanerParaPrestamo()" title="Escanear código de barras" aria-label="Escanear código de barras">📷</button>
+          </div>
           <input type="hidden" id="f-loan-book">
           <div class="search-select-list" id="loanBookOptions"></div>
         </div>
+      </div>
+      <div class="field full">
+        <label>Modalidad</label>
+        <div class="type-toggle" id="loanModalidadToggle">
+          <button type="button" class="type-opt active" id="loanModalidadBtn-domicilio" onclick="setLoanModalidad('domicilio')">🏠 A domicilio</button>
+          <button type="button" class="type-opt" id="loanModalidadBtn-sala" onclick="setLoanModalidad('sala')">📖 Leer en biblioteca</button>
+        </div>
+        <div id="loanModalidadHint" style="font-size:0.75rem; color:var(--ink-soft); margin-top:6px;">Sólo socios al día pueden llevarse libros a domicilio.</div>
       </div>
       <div class="field full">
         <label>¿A quién se presta?</label>
@@ -286,8 +362,8 @@
         <input type="date" id="f-loan-start">
       </div>
       <div class="field">
-        <label>Fecha Devolución</label>
-        <input type="date" id="f-loan-due">
+        <label>Días de préstamo</label>
+        <input type="number" id="f-loan-dias" min="1" value="14">
       </div>
     </div>
     <div class="form-actions">
@@ -324,10 +400,37 @@
   </div>
 </div>
 
+<!-- MODAL: DETALLE DE PRÉSTAMO -->
+<div class="modal" id="modalPrestamoDetalle">
+  <div class="modal-card glass">
+    <h2 id="detallePrestamoLibro">—</h2>
+    <div class="detail-grid">
+      <div class="detail-row"><span class="detail-label">Código</span><span id="detallePrestamoCodigo" class="mono">—</span></div>
+      <div class="detail-row"><span class="detail-label">Modalidad</span><span id="detallePrestamoModalidad">—</span></div>
+      <div class="detail-row"><span class="detail-label">Ejemplar</span><span id="detallePrestamoEjemplar">—</span></div>
+      <div class="detail-row"><span class="detail-label">Socio</span><span id="detallePrestamoSocio">—</span></div>
+      <div class="detail-row"><span class="detail-label">DNI</span><span id="detallePrestamoDni">—</span></div>
+      <div class="detail-row"><span class="detail-label">Fecha préstamo</span><span id="detallePrestamoFechaInicio">—</span></div>
+      <div class="detail-row"><span class="detail-label">Fecha estimada devolución</span><span id="detallePrestamoFechaEstimada">—</span></div>
+      <div class="detail-row" id="detallePrestamoFechaRealRow"><span class="detail-label">Fecha real devolución</span><span id="detallePrestamoFechaReal">—</span></div>
+      <div class="detail-row"><span class="detail-label">Estado</span><span id="detallePrestamoEstado">—</span></div>
+      <div class="detail-row" id="detallePrestamoEstadoLibroRow"><span class="detail-label">Estado del libro</span><span id="detallePrestamoEstadoLibro">—</span></div>
+      <div class="detail-row" id="detallePrestamoObsRow"><span class="detail-label">Observaciones</span><span id="detallePrestamoObs">—</span></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" id="detallePrestamoRenovarBtn" onclick="renovarPrestamoDesdeDetalle()">Renovar</button>
+      <button class="btn btn-primary" id="detallePrestamoToggleBtn" onclick="toggleDevolucionDesdeDetalle()">Devolver</button>
+      <button class="btn btn-ghost" onclick="eliminarPrestamoDesdeDetalle()">Eliminar</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalPrestamoDetalle')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: NUEVO LIBRO -->
 <div class="modal" id="modalBook">
   <div class="modal-card glass">
-    <h2>Añadir Nuevo Libro</h2>
+    <h2 id="modalBookTitle">Añadir Nuevo Libro</h2>
+    <button type="button" class="btn btn-ghost" id="modalBookScanBtn" onclick="abrirEscanerISBN()" style="margin-bottom:16px;">📷 Escanear código de barras</button>
     <div class="form-grid">
       <div class="field full">
         <label>Título del libro</label>
@@ -365,14 +468,55 @@
         <label>Ubicación física</label>
         <input type="text" id="f-book-ubicacion" placeholder="Ej. Estante A1">
       </div>
-      <div class="field">
+      <div class="field" id="bookCopiesField">
         <label>Cantidad de Ejemplares</label>
         <input type="number" id="f-book-copies" value="1" min="1">
       </div>
     </div>
     <div class="form-actions">
-      <button class="btn btn-primary" onclick="saveBook(event)">Guardar Libro</button>
+      <button class="btn btn-primary" id="modalBookSaveBtn" onclick="saveBook(event)">Guardar Libro</button>
       <button class="btn btn-ghost" onclick="closeModal('modalBook')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ESCANER DE CÓDIGO DE BARRAS -->
+<div class="modal" id="modalEscaner">
+  <div class="modal-card glass" style="max-width:420px;">
+    <h2>Escanear código de barras</h2>
+    <p style="color:var(--ink-soft); font-size:0.85rem; margin:0 0 14px; line-height:1.5;">Apuntá la cámara al código de barras (ISBN) de la contratapa del libro.</p>
+    <video id="escanerVideo" style="width:100%; border-radius:14px; background:#000; display:block;" autoplay muted playsinline></video>
+    <p id="escanerEstado" style="color:var(--ink-soft); font-size:0.8rem; margin:10px 0 0; text-align:center;"></p>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="cerrarEscanerISBN()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: DETALLE DE LIBRO -->
+<div class="modal" id="modalLibroDetalle">
+  <div class="modal-card glass">
+    <h2 id="detalleLibroTitulo">—</h2>
+    <div class="detail-grid">
+      <div class="detail-row"><span class="detail-label">Autor</span><span id="detalleLibroAutor">—</span></div>
+      <div class="detail-row"><span class="detail-label">Editorial</span><span id="detalleLibroEditorial">—</span></div>
+      <div class="detail-row"><span class="detail-label">Edición</span><span id="detalleLibroEdicion">—</span></div>
+      <div class="detail-row"><span class="detail-label">Año</span><span id="detalleLibroAnio">—</span></div>
+      <div class="detail-row"><span class="detail-label">Género</span><span id="detalleLibroGenero">—</span></div>
+      <div class="detail-row"><span class="detail-label">Categoría</span><span id="detalleLibroCategoria">—</span></div>
+      <div class="detail-row"><span class="detail-label">ISBN</span><span id="detalleLibroIsbn">—</span></div>
+      <div class="detail-row"><span class="detail-label">Ubicación</span><span id="detalleLibroUbicacion">—</span></div>
+      <div class="detail-row"><span class="detail-label">Precio reposición</span><span id="detalleLibroPrecio">—</span></div>
+    </div>
+    <div class="field full" style="margin-top:16px;">
+      <label>Ejemplares</label>
+      <div id="detalleLibroEjemplares" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="editarLibroDesdeDetalle()">Editar</button>
+      <button class="btn btn-ghost" onclick="agregarEjemplaresDesdeDetalle()">+ Ejemplares</button>
+      <button class="btn btn-ghost" onclick="eliminarLibroDesdeDetalle()">Eliminar</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalLibroDetalle')">Cerrar</button>
     </div>
   </div>
 </div>
@@ -495,9 +639,21 @@
   </div>
 </div>
 
+<!-- MODAL: CONFIRMACIÓN (reemplaza confirm() nativo) -->
+<div class="modal" id="modalConfirm">
+  <div class="modal-card glass" style="max-width:420px;">
+    <h2 id="confirmTitle">¿Confirmás?</h2>
+    <p id="confirmMessage" style="color:var(--ink-soft); line-height:1.5; margin:0 0 8px;"></p>
+    <div class="form-actions">
+      <button class="btn btn-primary" id="confirmAcceptBtn">Confirmar</button>
+      <button class="btn btn-ghost" id="confirmCancelBtn">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 </div>
 <!-- fin #appContent -->
-<script type="module" src="firebaseconfig.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

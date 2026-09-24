@@ -10,28 +10,22 @@ Autenticación y Panel Principal.
 
 ```
 proyecto-biblioteca/
-  index.html, style.css, script.js   Frontend (sin cambios visuales)
-  backend/                            API REST en Flask + SQLAlchemy + JWT
-    README_BACKEND.md                 Instrucciones de instalación y uso
+  index.html, style.css, script.js   Frontend
+  server/                             API REST en Node/Express + SQLite (node:sqlite)
+  data/biblioteca.sqlite              Base de datos (se crea sola, no se versiona)
 ```
 
 ## Puesta en marcha rápida
 
-1. **Backend** (ver `backend/README_BACKEND.md` para el detalle completo):
-   ```bash
-   cd backend
-   python -m venv venv && source venv/bin/activate
-   pip install -r requirements.txt
-   cp .env.example .env
-   python seed.py      # crea la base de datos y los usuarios de demo
-   python run.py       # API en http://127.0.0.1:5000/api
-   ```
+Un solo servidor Node levanta la API y el frontend juntos. Requiere Node 22+.
 
-2. **Frontend**: en otra terminal, desde la raíz del proyecto:
-   ```bash
-   python -m http.server 5500
-   ```
-   Abrir `http://127.0.0.1:5500` en el navegador.
+```bash
+npm install    # sólo una vez
+npm run seed   # sólo una vez (crea la base y los usuarios de demo)
+npm start      # cada vez que quieras usar la app
+```
+
+Abrir `http://127.0.0.1:5000` en el navegador.
 
 ## Usuarios de demostración
 
@@ -51,5 +45,5 @@ Cambiar estas contraseñas antes de un uso real.
   `style.css`.
 - El menú y los accesos disponibles cambian dinámicamente según el rol del
   usuario logueado (Módulo 9).
-- Para más detalle técnico del backend (modelos, endpoints, reglas de
-  negocio configurables), ver `backend/README_BACKEND.md`.
+- Reglas de negocio configurables (multa por día de atraso, plazo de
+  préstamo, costo de reposición) en el archivo `.env` de la raíz.

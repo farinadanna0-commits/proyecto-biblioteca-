@@ -1,9 +1,10 @@
 // =====================================================================
 // Biblioteca Colegio Secundario San Carlos — Frontend
-// Conectado a la API REST del backend Flask (ver carpeta /backend).
-// Si el backend corre en otra URL/puerto, editar la siguiente constante.
+// Conectado a la API REST del backend Node (ver carpeta /server).
+// Frontend y API se sirven desde el mismo servidor, por eso es relativa.
 // =====================================================================
-const API_BASE = 'http://127.0.0.1:5000/api';
+const API_BASE = '/api';
+const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 // ---------- Estado de sesión ----------
 let authToken = null;
@@ -17,16 +18,23 @@ let sanciones = [];
 let usuarios = [];
 let dashboardResumen = null;
 
-let activeLoanFilter = 'todos';
+let loanFilterEstado = 'todos';
+let detallePrestamoId = null;
 let memberFilterTipo = 'todos';
 let memberFilterVinculo = 'todos';
 let memberFilterEstado = 'todos';
-let activeBookGenreFilter = 'todos';
+let bookFilterGenero = 'todos';
+let bookFilterCategoria = 'todos';
+let bookFilterDisponibilidad = 'todos';
 let activeSancionFilter = 'todos';
 let selectedMemberType = 'alumno';
 let editingMemberId = null;
+let editingBookId = null;
+let detalleLibroId = null;
 let selectedEsSocio = true;
 let loanPersonType = 'socio';
+let loanModalidad = 'domicilio';
+let ultimoReporte = {tipo: null, data: null};
 
 // ---------------------------------------------------------------------
 // Autenticación (Módulo 8) y arranque de sesión
@@ -128,7 +136,47 @@ document.addEventListener('DOMContentLoaded', () => {
       el.addEventListener('keydown', (e) => { if(e.key === 'Enter') doLogin(e); });
     }
   });
+  if(!SpeechRecognitionAPI){
+    document.querySelectorAll('.mic-btn:not(.cam-btn)').forEach(btn => btn.hidden = true);
+  }
+  if(typeof ZXing === 'undefined' || !navigator.mediaDevices){
+    document.querySelectorAll('.cam-btn, #modalBookScanBtn').forEach(btn => btn.hidden = true);
+  }
 });
+
+// ---------- Búsqueda por voz (Web Speech API) ----------
+function buscarPorVoz(inputId, alTerminar){
+  if(!SpeechRecognitionAPI){
+    showToast('Tu navegador no soporta búsqueda por voz. Probá con Chrome o Edge.', 'danger');
+    return;
+  }
+
+  const input = document.getElementById(inputId);
+  const btn = document.getElementById(`${inputId}MicBtn`);
+  if(!input) return;
+
+  const reconocimiento = new SpeechRecognitionAPI();
+  reconocimiento.lang = 'es-AR';
+  reconocimiento.interimResults = false;
+  reconocimiento.maxAlternatives = 1;
+
+  reconocimiento.onstart = () => { if(btn) btn.classList.add('listening'); };
+  reconocimiento.onend = () => { if(btn) btn.classList.remove('listening'); };
+  reconocimiento.onerror = (e) => {
+    if(btn) btn.classList.remove('listening');
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      showToast('Necesitás dar permiso de micrófono para buscar por voz', 'danger');
+    } else if(e.error !== 'no-speech' && e.error !== 'aborted'){
+      showToast('No se pudo usar el micrófono', 'danger');
+    }
+  };
+  reconocimiento.onresult = (e) => {
+    input.value = e.results[0][0].transcript;
+    if(typeof alTerminar === 'function') alTerminar();
+  };
+
+  reconocimiento.start();
+}
 
 // ---------- Panel dinámico por rol (Módulo 9) ----------
 function rolLabel(rol){
@@ -312,10 +360,9 @@ function openModal(id){
     document.getElementById('f-loan-member').value = '';
     document.getElementById('loanBookOptions').classList.remove('open');
     document.getElementById('loanMemberOptions').classList.remove('open');
+    setLoanModalidad('domicilio');
     setLoanPersonType('socio');
     document.getElementById('f-loan-start').value = todayISO();
-    const d = new Date(); d.setDate(d.getDate() + 14);
-    document.getElementById('f-loan-due').value = d.toISOString().slice(0,10);
   }
   if(id === 'modalMember'){
     editingMemberId = null;
@@ -326,8 +373,42 @@ function openModal(id){
     setMemberType('alumno');
     setEsSocio(true);
   }
+  if(id === 'modalBook'){
+    editingBookId = null;
+    document.getElementById('modalBookTitle').textContent = 'Añadir Nuevo Libro';
+    document.getElementById('modalBookSaveBtn').textContent = 'Guardar Libro';
+    document.querySelectorAll('#modalBook input').forEach(i => i.value = '');
+    document.getElementById('f-book-copies').value = 1;
+    document.getElementById('bookCopiesField').style.display = '';
+  }
 }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+
+// ---------- Confirmación (reemplaza confirm() nativo) ----------
+function confirmDialog(mensaje, opciones = {}){
+  const { titulo = '¿Confirmás?', textoAceptar = 'Confirmar', textoCancelar = 'Cancelar' } = opciones;
+  return new Promise((resolve) => {
+    document.getElementById('confirmTitle').textContent = titulo;
+    document.getElementById('confirmMessage').textContent = mensaje;
+    const acceptBtn = document.getElementById('confirmAcceptBtn');
+    const cancelBtn = document.getElementById('confirmCancelBtn');
+    acceptBtn.textContent = textoAceptar;
+    cancelBtn.textContent = textoCancelar;
+
+    const terminar = (resultado) => {
+      closeModal('modalConfirm');
+      acceptBtn.removeEventListener('click', onAceptar);
+      cancelBtn.removeEventListener('click', onCancelar);
+      resolve(resultado);
+    };
+    const onAceptar = () => terminar(true);
+    const onCancelar = () => terminar(false);
+
+    acceptBtn.addEventListener('click', onAceptar);
+    cancelBtn.addEventListener('click', onCancelar);
+    openModal('modalConfirm');
+  });
+}
 
 // ---------- Buscador de Libro (Préstamos) ----------
 function renderLoanBookOptions(){
@@ -362,6 +443,18 @@ function selectLoanBook(id){
     showToast(`Atención: quedan pocos ejemplares de "${b.titulo}" (${b.ejemplares_disponibles} disponible/s)`, 'info');
   }
 }
+
+// ---------- Modalidad del préstamo (Domicilio / Sala de lectura) ----------
+function setLoanModalidad(modalidad){
+  loanModalidad = modalidad;
+  document.getElementById('loanModalidadBtn-domicilio').classList.toggle('active', modalidad === 'domicilio');
+  document.getElementById('loanModalidadBtn-sala').classList.toggle('active', modalidad === 'sala');
+  document.getElementById('f-loan-dias').value = modalidad === 'domicilio' ? 14 : 1;
+  document.getElementById('loanModalidadHint').textContent = modalidad === 'domicilio'
+    ? 'Sólo socios al día pueden llevarse libros a domicilio.'
+    : 'Se lee en la biblioteca; no hace falta ser socio, pero el plan debe estar al día.';
+}
+function modalidadLabel(m){ return m === 'sala' ? 'Leer en biblioteca' : 'A domicilio'; }
 
 // ---------- Tipo de persona a la que se presta (Socio / Alumno / Profesor) ----------
 function setLoanPersonType(tipo){
@@ -443,11 +536,30 @@ async function saveLoan(evt){
   const libroId = document.getElementById('f-loan-book').value;
   const socioId = document.getElementById('f-loan-member').value;
   const inicio = document.getElementById('f-loan-start').value;
-  const vencimiento = document.getElementById('f-loan-due').value;
+  const dias = parseInt(document.getElementById('f-loan-dias').value, 10);
 
-  if(!libroId || !socioId || !vencimiento){
-    showToast('Elegí un libro y una persona antes de registrar el préstamo', 'danger');
+  if(!libroId || !socioId || !dias || dias < 1){
+    showToast('Elegí un libro, una persona y la cantidad de días de préstamo', 'danger');
     return;
+  }
+
+  const libro = books.find(b => b.id === Number(libroId));
+  const persona = members.find(m => m.id === Number(socioId));
+
+  if(loanModalidad === 'domicilio' && persona && !persona.es_socio){
+    showToast('Esta persona no es socia: sólo puede llevarse el libro para leer en la biblioteca', 'danger');
+    return;
+  }
+  if(loanModalidad === 'domicilio' && libro && libro.ejemplares_disponibles === 1 && currentUser.rol !== 'ADMIN'){
+    showToast('Este es el último ejemplar disponible: sólo un administrador puede autorizar llevarlo a domicilio', 'danger');
+    return;
+  }
+  if(loanModalidad === 'domicilio' && libro && libro.ejemplares_disponibles === 2){
+    const seguir = await confirmDialog(
+      `Quedan pocos ejemplares de "${libro.titulo}" (2 disponibles). ¿Confirmás el préstamo a domicilio igual?`,
+      {titulo: 'Pocos ejemplares disponibles', textoAceptar: 'Prestar igual'}
+    );
+    if(!seguir) return;
   }
 
   try {
@@ -455,7 +567,7 @@ async function saveLoan(evt){
       method: 'POST',
       body: JSON.stringify({
         libro_id: Number(libroId), socio_id: Number(socioId),
-        fecha_prestamo: inicio, fecha_estimada_devolucion: vencimiento,
+        fecha_prestamo: inicio, dias_prestamo: dias, modalidad: loanModalidad,
       }),
     });
     closeModal('modalLoan');
@@ -497,12 +609,122 @@ async function reabrirPrestamo(id){
 }
 
 async function deleteLoan(id){
-  if(!confirm('¿Eliminar este préstamo? Esta acción no se puede deshacer.')) return;
+  const ok = await confirmDialog('¿Eliminar este préstamo? Esta acción no se puede deshacer.', {titulo: 'Eliminar préstamo', textoAceptar: 'Eliminar'});
+  if(!ok) return;
   try {
     await apiFetch(`/prestamos/${id}`, {method: 'DELETE'});
     showToast('Préstamo eliminado', 'danger');
     await cargarDatosIniciales();
   } catch(err){}
+}
+
+// ---------------------------------------------------------------------
+// Escáner de código de barras (ISBN) con autocompletado
+// ---------------------------------------------------------------------
+let zxingReader = null;
+
+function abrirEscaner(onCodigoDetectado){
+  if(typeof ZXing === 'undefined'){
+    showToast('No se pudo cargar el lector de códigos de barras', 'danger');
+    return;
+  }
+  document.getElementById('escanerEstado').textContent = 'Iniciando cámara...';
+  openModal('modalEscaner');
+
+  zxingReader = new ZXing.BrowserMultiFormatReader();
+  zxingReader
+    .decodeFromVideoDevice(null, 'escanerVideo', (result, err) => {
+      document.getElementById('escanerEstado').textContent = 'Buscando código de barras...';
+      if(result){
+        const isbn = result.getText().replace(/[^0-9Xx]/g, '');
+        cerrarEscanerISBN();
+        onCodigoDetectado(isbn);
+      }
+      // err se dispara en cada cuadro sin código visible; no es un error real, se ignora.
+    })
+    .catch((err) => {
+      showToast('No se pudo acceder a la cámara: ' + (err && err.message ? err.message : 'permiso denegado'), 'danger');
+      cerrarEscanerISBN();
+    });
+}
+
+function abrirEscanerISBN(){
+  abrirEscaner(procesarISBNEscaneado);
+}
+
+function abrirEscanerParaPrestamo(){
+  abrirEscaner(buscarLibroEscaneadoParaPrestamo);
+}
+
+function buscarLibroEscaneadoParaPrestamo(isbn){
+  const libro = books.find(b => b.isbn && b.isbn.replace(/[^0-9Xx]/g, '') === isbn);
+  if(!libro){
+    showToast('No encontramos ningún libro con ese ISBN en el catálogo', 'danger');
+    return;
+  }
+  if(libro.ejemplares_disponibles <= 0){
+    showToast(`"${libro.titulo}" no tiene ejemplares disponibles ahora mismo`, 'danger');
+    return;
+  }
+  selectLoanBook(libro.id);
+  showToast(`Libro encontrado: ${libro.titulo}`, 'success');
+}
+
+function cerrarEscanerISBN(){
+  if(zxingReader){
+    zxingReader.reset();
+    zxingReader = null;
+  }
+  closeModal('modalEscaner');
+}
+
+async function procesarISBNEscaneado(isbn){
+  document.getElementById('f-book-isbn').value = isbn;
+  showToast(`Código leído: ${isbn}. Buscando datos del libro...`, 'info');
+
+  try {
+    const res = await fetch(`https://openlibrary.org/isbn/${isbn}.json`);
+    if(!res.ok){
+      showToast('No encontramos datos para ese ISBN — completá el resto a mano', 'info');
+      return;
+    }
+    const libro = await res.json();
+
+    if(libro.title) document.getElementById('f-book-title').value = libro.title;
+    if(libro.publishers && libro.publishers.length){
+      document.getElementById('f-book-editorial').value = libro.publishers[0];
+    }
+    if(libro.publish_date){
+      const anio = libro.publish_date.match(/\d{4}/);
+      if(anio) document.getElementById('f-book-anio').value = anio[0];
+    }
+
+    // El autor no viene directo: hay que seguir edición → obra → autor.
+    let clavesAutores = (libro.authors || []).map(a => a.key).filter(Boolean);
+    if(!clavesAutores.length && libro.works && libro.works.length){
+      const obraRes = await fetch(`https://openlibrary.org${libro.works[0].key}.json`);
+      if(obraRes.ok){
+        const obra = await obraRes.json();
+        clavesAutores = (obra.authors || []).map(a => a.author && a.author.key).filter(Boolean);
+      }
+    }
+    if(clavesAutores.length){
+      const nombres = await Promise.all(clavesAutores.map(async (key) => {
+        const r = await fetch(`https://openlibrary.org${key}.json`);
+        if(!r.ok) return null;
+        const a = await r.json();
+        return a.name;
+      }));
+      const autor = nombres.filter(Boolean).join(', ');
+      if(autor) document.getElementById('f-book-author').value = autor;
+    } else if(libro.by_statement){
+      document.getElementById('f-book-author').value = libro.by_statement;
+    }
+
+    showToast('Datos del libro completados automáticamente', 'success');
+  } catch(err){
+    showToast('No se pudo consultar la base de libros — completá a mano', 'info');
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -523,26 +745,36 @@ async function saveBook(evt){
 
   if(!titulo){ showToast('Ingresá al menos el título del libro', 'danger'); return; }
 
+  const datosComunes = {
+    titulo, autor, editorial, edicion,
+    anio_publicacion: anio ? Number(anio) : null,
+    genero, categoria, isbn, ubicacion_fisica: ubicacion,
+  };
+
   try {
-    await apiFetch('/libros', {
-      method: 'POST',
-      body: JSON.stringify({
-        titulo, autor, editorial, edicion,
-        anio_publicacion: anio ? Number(anio) : null,
-        genero, categoria, isbn, ubicacion_fisica: ubicacion,
-        cantidad_ejemplares: cantidad,
-      }),
-    });
+    if(editingBookId){
+      await apiFetch(`/libros/${editingBookId}`, {
+        method: 'PUT', body: JSON.stringify(datosComunes),
+      });
+      showToast('Libro actualizado', 'success');
+    } else {
+      await apiFetch('/libros', {
+        method: 'POST',
+        body: JSON.stringify(Object.assign({}, datosComunes, {cantidad_ejemplares: cantidad})),
+      });
+      showToast('Libro añadido al catálogo', 'success');
+    }
     closeModal('modalBook');
     document.querySelectorAll('#modalBook input').forEach(i => i.value = '');
     document.getElementById('f-book-copies').value = 1;
-    showToast('Libro añadido al catálogo', 'success');
+    editingBookId = null;
     await cargarDatosIniciales();
   } catch(err){}
 }
 
 async function deleteBook(id){
-  if(!confirm('¿Eliminar este libro del catálogo?')) return;
+  const ok = await confirmDialog('¿Eliminar este libro del catálogo?', {titulo: 'Eliminar libro', textoAceptar: 'Eliminar'});
+  if(!ok) return;
   try {
     await apiFetch(`/libros/${id}`, {method: 'DELETE'});
     showToast('Libro eliminado del catálogo', 'danger');
@@ -606,7 +838,8 @@ async function saveMember(evt){
 }
 
 async function deleteMember(id){
-  if(!confirm('¿Eliminar este socio?')) return;
+  const ok = await confirmDialog('¿Eliminar este socio?', {titulo: 'Eliminar socio', textoAceptar: 'Eliminar'});
+  if(!ok) return;
   try {
     await apiFetch(`/socios/${id}`, {method: 'DELETE'});
     showToast('Socio eliminado', 'danger');
@@ -656,58 +889,135 @@ async function generarReporte(evt){
 
   try {
     const data = await apiFetch(`/reportes/${tipo}?${params.toString()}`);
+    ultimoReporte = {tipo, data};
     renderReporte(tipo, data);
   } catch(err){}
+}
+
+const REPORTE_TIPO_LABEL = {
+  'prestados-actualmente': 'Préstamos actuales (todo lo prestado)',
+  'vencidos': 'Préstamos vencidos',
+  'socios-atrasados': 'Socios con atrasos',
+  'mas-solicitados': 'Libros más solicitados',
+  'danos-perdidas': 'Daños y pérdidas',
+  'ingresos-multas': 'Ingresos por multas',
+};
+
+function filaTablaReporte(tipo, item, i){
+  if(tipo === 'vencidos' || tipo === 'prestados-actualmente'){
+    return `<tr><td>${i}</td><td>${item.libro_titulo || '—'}</td><td>${item.socio_nombre || '—'}</td><td class="mono">${item.codigo}</td><td>${formatDate(item.fecha_estimada_devolucion)}</td><td>${item.estado === 'atrasado' ? 'Atrasado' : 'Activo'}</td></tr>`;
+  }
+  if(tipo === 'danos-perdidas'){
+    return `<tr><td>${i}</td><td>${item.libro_titulo || '—'}</td><td>${item.socio_nombre || '—'}</td><td class="mono">${item.codigo}</td><td>${formatDate(item.fecha_real_devolucion)}</td><td>${estadoDevueltoLabel(item.estado_libro_devuelto)}</td></tr>`;
+  }
+  if(tipo === 'socios-atrasados'){
+    return `<tr><td>${i}</td><td>${item.nombre_completo}</td><td class="mono">${item.dni}</td><td>${estadoPlanLabel(item.estado_plan)}</td></tr>`;
+  }
+  if(tipo === 'mas-solicitados'){
+    return `<tr><td>${i}</td><td>${item.titulo}</td><td>${item.autor}</td><td class="mono">${item.total_prestamos}</td></tr>`;
+  }
+  if(tipo === 'ingresos-multas'){
+    return `<tr><td>${i}</td><td>${item.socio_nombre || 'Socio eliminado'}</td><td>${item.tipo === 'atraso' ? 'Multa por atraso' : 'Reposición por pérdida'}</td><td class="mono">$${Number(item.monto_total).toFixed(2)}</td></tr>`;
+  }
+  return '';
+}
+
+const REPORTE_COLUMNAS = {
+  'prestados-actualmente': ['#', 'Libro', 'Socio', 'Código', 'Vencimiento', 'Estado'],
+  'vencidos': ['#', 'Libro', 'Socio', 'Código', 'Vencimiento', 'Estado'],
+  'danos-perdidas': ['#', 'Libro', 'Socio', 'Código', 'Devuelto', 'Estado del libro'],
+  'socios-atrasados': ['#', 'Nombre', 'DNI', 'Estado'],
+  'mas-solicitados': ['#', 'Libro', 'Autor', 'Préstamos'],
+  'ingresos-multas': ['#', 'Socio', 'Tipo', 'Monto'],
+};
+
+function descargarReportePDF(){
+  const {tipo, data} = ultimoReporte;
+  const lista = tipo === 'ingresos-multas' ? (data ? data.detalle : null) : data;
+
+  if(!tipo || !lista || !lista.length){
+    showToast('Generá un reporte con resultados primero', 'danger');
+    return;
+  }
+
+  const desde = document.getElementById('f-reporte-desde').value;
+  const hasta = document.getElementById('f-reporte-hasta').value;
+  const rango = (desde || hasta)
+    ? `Rango: ${desde ? formatDate(desde) : 'inicio'} — ${hasta ? formatDate(hasta) : 'hoy'}`
+    : 'Rango: todas las fechas';
+
+  const printTitle = document.getElementById('reportePrintTitle');
+  printTitle.querySelector('h2').textContent = REPORTE_TIPO_LABEL[tipo] || 'Reporte';
+  let subtitulo = `${rango} · ${lista.length} resultado${lista.length === 1 ? '' : 's'} · Generado el ${formatDate(todayISO())} por ${currentUser.nombre_completo}`;
+  if(tipo === 'ingresos-multas'){
+    subtitulo = `Total recaudado: $${Number(data.total_recaudado).toFixed(2)} · ${subtitulo}`;
+  }
+  printTitle.querySelector('p').textContent = subtitulo;
+
+  const columnas = REPORTE_COLUMNAS[tipo];
+  const filas = lista.map((item, idx) => filaTablaReporte(tipo, item, idx + 1)).join('');
+  document.getElementById('reportePrintTable').innerHTML = `
+    <table>
+      <thead><tr>${columnas.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+      <tbody>${filas}</tbody>
+    </table>
+  `;
+
+  window.print();
 }
 
 function renderReporte(tipo, data){
   const resumen = document.getElementById('reporteResumen');
   const resultados = document.getElementById('reporteResultados');
+  const head = document.getElementById('reporteResultadosHead');
   resumen.style.display = 'none';
   resumen.innerHTML = '';
 
-  if(tipo === 'vencidos' || tipo === 'danos-perdidas'){
+  const columnas = REPORTE_COLUMNAS[tipo].slice(1); // sin la columna "#" (no hace falta en pantalla)
+  head.innerHTML = `<tr>${columnas.map(c => `<th>${c}</th>`).join('')}</tr>`;
+  const colspan = columnas.length;
+
+  if(tipo === 'vencidos' || tipo === 'prestados-actualmente'){
+    resultados.innerHTML = data.length ? data.map(p => {
+      const s = statusOf(p);
+      return `
+      <tr onclick="verDetallePrestamo(${p.id})">
+        <td><strong>${p.libro_titulo || 'Libro eliminado'}</strong></td>
+        <td>${p.socio_nombre || '—'}</td>
+        <td class="mono">${p.codigo}</td>
+        <td>${formatDate(p.fecha_estimada_devolucion)}</td>
+        <td><span class="status-chip ${s}">${statusLabel(s, p)}</span></td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="${colspan}" class="empty-state-cell">Sin resultados para el rango elegido.</td></tr>`;
+
+  } else if(tipo === 'danos-perdidas'){
     resultados.innerHTML = data.length ? data.map(p => `
-      <div class="ticket glass">
-        <div class="edge overdue"></div>
-        <div class="ticket-main">
-          <div class="title">${p.libro_titulo || 'Libro'}</div>
-          <div class="sub">Socio: <strong>${p.socio_nombre || '—'}</strong> · Código: ${p.codigo}</div>
-          <span class="badge">Venc.: ${formatDate(p.fecha_estimada_devolucion)}</span>
-        </div>
-        <div class="ticket-stub">
-          <span class="badge mono">${p.estado_libro_devuelto ? estadoDevueltoLabel(p.estado_libro_devuelto) : p.estado}</span>
-        </div>
-      </div>
-    `).join('') : '<div class="empty-state glass">Sin resultados para el rango elegido.</div>';
+      <tr onclick="verDetallePrestamo(${p.id})">
+        <td><strong>${p.libro_titulo || 'Libro eliminado'}</strong></td>
+        <td>${p.socio_nombre || '—'}</td>
+        <td class="mono">${p.codigo}</td>
+        <td>${formatDate(p.fecha_real_devolucion)}</td>
+        <td>${estadoDevueltoLabel(p.estado_libro_devuelto)}</td>
+      </tr>
+    `).join('') : `<tr><td colspan="${colspan}" class="empty-state-cell">Sin resultados para el rango elegido.</td></tr>`;
 
   } else if(tipo === 'socios-atrasados'){
     resultados.innerHTML = data.length ? data.map(s => `
-      <div class="ticket glass">
-        <div class="edge overdue"></div>
-        <div class="ticket-main">
-          <div class="title">${s.nombre_completo}</div>
-          <div class="sub">DNI: ${s.dni}</div>
-        </div>
-        <div class="ticket-stub">
-          <span class="status-chip overdue">${estadoPlanLabel(s.estado_plan)}</span>
-        </div>
-      </div>
-    `).join('') : '<div class="empty-state glass">No hay socios con atrasos.</div>';
+      <tr onclick="verDetalleSocio(${s.id})">
+        <td><strong>${s.nombre_completo}</strong></td>
+        <td class="mono">${s.dni}</td>
+        <td><span class="status-chip overdue">${estadoPlanLabel(s.estado_plan)}</span></td>
+      </tr>
+    `).join('') : `<tr><td colspan="${colspan}" class="empty-state-cell">No hay socios con atrasos.</td></tr>`;
 
   } else if(tipo === 'mas-solicitados'){
-    resultados.innerHTML = data.length ? data.map((r, i) => `
-      <div class="ticket glass">
-        <div class="edge on-time"></div>
-        <div class="ticket-main">
-          <div class="title">#${i + 1} · ${r.titulo}</div>
-          <div class="sub">Autor: ${r.autor}</div>
-        </div>
-        <div class="ticket-stub">
-          <span class="badge mono">${r.total_prestamos} préstamos</span>
-        </div>
-      </div>
-    `).join('') : '<div class="empty-state glass">Sin préstamos en el rango elegido.</div>';
+    resultados.innerHTML = data.length ? data.map(r => `
+      <tr onclick="verDetalleLibro(${r.libro_id})">
+        <td><strong>${r.titulo}</strong></td>
+        <td>${r.autor}</td>
+        <td class="mono">${r.total_prestamos}</td>
+      </tr>
+    `).join('') : `<tr><td colspan="${colspan}" class="empty-state-cell">Sin préstamos en el rango elegido.</td></tr>`;
 
   } else if(tipo === 'ingresos-multas'){
     resumen.style.display = 'grid';
@@ -722,17 +1032,12 @@ function renderReporte(tipo, data){
       </div>
     `;
     resultados.innerHTML = data.detalle.length ? data.detalle.map(s => `
-      <div class="ticket glass is-returned">
-        <div class="edge returned"></div>
-        <div class="ticket-main">
-          <div class="title">${s.socio_nombre || 'Socio eliminado'}</div>
-          <div class="sub">${s.tipo === 'atraso' ? 'Multa por atraso' : 'Reposición por pérdida'}</div>
-        </div>
-        <div class="ticket-stub">
-          <span class="badge mono">$${Number(s.monto_total).toFixed(2)}</span>
-        </div>
-      </div>
-    `).join('') : '<div class="empty-state glass">Sin ingresos en el rango elegido.</div>';
+      <tr onclick="verDetalleSocio(${s.socio_id})">
+        <td><strong>${s.socio_nombre || 'Socio eliminado'}</strong></td>
+        <td>${s.tipo === 'atraso' ? 'Multa por atraso' : 'Reposición por pérdida'}</td>
+        <td class="mono">$${Number(s.monto_total).toFixed(2)}</td>
+      </tr>
+    `).join('') : `<tr><td colspan="${colspan}" class="empty-state-cell">Sin ingresos en el rango elegido.</td></tr>`;
   }
 }
 
@@ -792,16 +1097,30 @@ function renderHome(){
   if(!container) return;
 
   if(!urgentLoans.length){
-    container.innerHTML = '<div class="empty-state glass">No hay préstamos urgentes o vencidos. ¡Todo al día! ✨</div>';
+    container.innerHTML = '<tr><td colspan="4" class="empty-state-cell">No hay préstamos urgentes o vencidos. ¡Todo al día! ✨</td></tr>';
     return;
   }
-  container.innerHTML = urgentLoans.map(l => renderTicketHtml(l)).join('');
+  container.innerHTML = urgentLoans.map(l => {
+    const s = statusOf(l);
+    return `
+    <tr onclick="verDetallePrestamo(${l.id})">
+      <td><strong>${l.libro_titulo || '—'}</strong></td>
+      <td>${l.socio_nombre || '—'}</td>
+      <td>${formatDate(l.fecha_estimada_devolucion)}</td>
+      <td><span class="status-chip ${s}">${statusLabel(s, l)}</span></td>
+    </tr>`;
+  }).join('');
 }
 
-function setLoanFilter(key, btn){
-  activeLoanFilter = key;
-  document.querySelectorAll('#loanFilters .filter').forEach(f => f.classList.remove('active'));
-  btn.classList.add('active');
+function applyLoanFilters(){
+  loanFilterEstado = document.getElementById('loanFilterEstado').value;
+  renderLoans();
+}
+
+function resetLoanFilters(){
+  loanFilterEstado = 'todos';
+  document.getElementById('loanFilterEstado').value = 'todos';
+  document.getElementById('loanSearch').value = '';
   renderLoans();
 }
 
@@ -809,7 +1128,7 @@ function renderLoans(){
   const query = (document.getElementById('loanSearch')?.value || '').toLowerCase();
   let list = loans.slice();
 
-  if(activeLoanFilter !== 'todos') list = list.filter(l => statusOf(l) === activeLoanFilter);
+  if(loanFilterEstado !== 'todos') list = list.filter(l => statusOf(l) === loanFilterEstado);
   if(query){
     list = list.filter(l =>
       (l.libro_titulo || '').toLowerCase().includes(query) ||
@@ -820,34 +1139,101 @@ function renderLoans(){
   const container = document.getElementById('loansList');
   if(!container) return;
   if(!list.length){
-    container.innerHTML = '<div class="empty-state glass">No se encontraron préstamos.</div>';
+    container.innerHTML = '<tr><td colspan="4" class="empty-state-cell">No se encontraron préstamos.</td></tr>';
     return;
   }
-  container.innerHTML = list.map(l => renderTicketHtml(l)).join('');
+
+  container.innerHTML = list.map(l => {
+    const s = statusOf(l);
+    return `
+    <tr onclick="verDetallePrestamo(${l.id})">
+      <td><strong>${l.libro_titulo || '—'}</strong></td>
+      <td>${l.socio_nombre || '—'}</td>
+      <td>${formatDate(l.fecha_estimada_devolucion)}</td>
+      <td><span class="status-chip ${s}">${statusLabel(s, l)}</span></td>
+    </tr>`;
+  }).join('');
 }
 
-function renderTicketHtml(l){
+// ---------- Modal de detalle de préstamo ----------
+function verDetallePrestamo(id){
+  const l = loans.find(x => x.id === id);
+  if(!l) return;
+  detallePrestamoId = id;
   const s = statusOf(l);
   const yaCerrado = l.estado === 'devuelto' || l.estado === 'perdido';
-  return `
-    <div class="ticket glass ${yaCerrado ? 'is-returned' : ''}">
-      <div class="edge ${s}"></div>
-      <div class="ticket-main">
-        <div class="title">${l.libro_titulo || 'Libro eliminado'}</div>
-        <div class="sub">Prestado a: <strong>${l.socio_nombre || 'Socio eliminado'}</strong></div>
-        <span class="badge">Inicio: ${formatDate(l.fecha_prestamo)}</span>
-        <span class="badge mono" style="margin-left:6px;">${l.codigo}</span>
-      </div>
-      <div class="ticket-stub">
-        <span class="status-chip ${s}">${statusLabel(s, l)}</span>
-        <div class="mono" style="font-weight:600; font-size:0.85rem;">${formatDate(l.fecha_estimada_devolucion)}</div>
-        ${yaCerrado
-          ? `<button class="action-link" onclick="reabrirPrestamo(${l.id})">Reabrir</button>`
-          : `<button class="action-link" onclick="abrirDevolucion(${l.id})">Devolver</button>`}
-        <button class="action-link danger" onclick="deleteLoan(${l.id})">Eliminar</button>
-      </div>
-    </div>
-  `;
+
+  document.getElementById('detallePrestamoLibro').textContent = l.libro_titulo || '—';
+  document.getElementById('detallePrestamoCodigo').textContent = l.codigo || '—';
+  document.getElementById('detallePrestamoModalidad').textContent = modalidadLabel(l.modalidad);
+  document.getElementById('detallePrestamoEjemplar').textContent = l.numero_ejemplar ? `#${l.numero_ejemplar}` : '—';
+  document.getElementById('detallePrestamoSocio').textContent = l.socio_nombre || '—';
+  document.getElementById('detallePrestamoDni').textContent = l.socio_dni || '—';
+  document.getElementById('detallePrestamoFechaInicio').textContent = formatDate(l.fecha_prestamo);
+  document.getElementById('detallePrestamoFechaEstimada').textContent = formatDate(l.fecha_estimada_devolucion);
+  document.getElementById('detallePrestamoEstado').innerHTML = `<span class="status-chip ${s}">${statusLabel(s, l)}</span>`;
+
+  const fechaRealRow = document.getElementById('detallePrestamoFechaRealRow');
+  if(l.fecha_real_devolucion){
+    fechaRealRow.style.display = 'flex';
+    document.getElementById('detallePrestamoFechaReal').textContent = formatDate(l.fecha_real_devolucion);
+  } else {
+    fechaRealRow.style.display = 'none';
+  }
+
+  const estadoLibroRow = document.getElementById('detallePrestamoEstadoLibroRow');
+  if(l.estado_libro_devuelto){
+    estadoLibroRow.style.display = 'flex';
+    document.getElementById('detallePrestamoEstadoLibro').textContent = estadoDevueltoLabel(l.estado_libro_devuelto);
+  } else {
+    estadoLibroRow.style.display = 'none';
+  }
+
+  const obsRow = document.getElementById('detallePrestamoObsRow');
+  if(l.observaciones){
+    obsRow.style.display = 'flex';
+    document.getElementById('detallePrestamoObs').textContent = l.observaciones;
+  } else {
+    obsRow.style.display = 'none';
+  }
+
+  const toggleBtn = document.getElementById('detallePrestamoToggleBtn');
+  toggleBtn.textContent = yaCerrado ? 'Reabrir' : 'Devolver';
+
+  document.getElementById('detallePrestamoRenovarBtn').style.display = l.estado === 'activo' ? '' : 'none';
+
+  openModal('modalPrestamoDetalle');
+}
+
+async function renovarPrestamoDesdeDetalle(){
+  const l = loans.find(x => x.id === detallePrestamoId);
+  if(!l) return;
+
+  const sugerido = l.modalidad === 'sala' ? 1 : 14;
+  const dias = parseInt(prompt('¿Cuántos días más de préstamo?', sugerido), 10);
+  if(!dias || dias < 1) return;
+
+  try {
+    await apiFetch(`/prestamos/${l.id}/renovar`, {method: 'PUT', body: JSON.stringify({dias})});
+    showToast(`Préstamo renovado por ${dias} día${dias === 1 ? '' : 's'} más`, 'success');
+    await cargarDatosIniciales();
+    verDetallePrestamo(l.id);
+  } catch(err){}
+}
+
+function toggleDevolucionDesdeDetalle(){
+  const l = loans.find(x => x.id === detallePrestamoId);
+  if(!l) return;
+  closeModal('modalPrestamoDetalle');
+  const yaCerrado = l.estado === 'devuelto' || l.estado === 'perdido';
+  if(yaCerrado) reabrirPrestamo(l.id);
+  else abrirDevolucion(l.id);
+}
+
+function eliminarPrestamoDesdeDetalle(){
+  const id = detallePrestamoId;
+  closeModal('modalPrestamoDetalle');
+  deleteLoan(id);
 }
 
 function generosDisponibles(){
@@ -855,24 +1241,42 @@ function generosDisponibles(){
   return Array.from(set).sort();
 }
 
-function setBookGenreFilter(key, btn){
-  activeBookGenreFilter = key;
-  document.querySelectorAll('#bookGenreFilters .filter').forEach(f => f.classList.remove('active'));
-  if(btn) btn.classList.add('active');
+function categoriasDisponibles(){
+  const set = new Set(books.map(b => b.categoria).filter(Boolean));
+  return Array.from(set).sort();
+}
+
+function renderBookFilterOptions(){
+  const generoSel = document.getElementById('bookFilterGenero');
+  const categoriaSel = document.getElementById('bookFilterCategoria');
+  if(!generoSel || !categoriaSel) return;
+
+  const opciones = (valores) => ['<option value="todos">Todos</option>']
+    .concat(valores.map(v => `<option value="${v.replace(/"/g, '&quot;')}">${v}</option>`)).join('');
+
+  generoSel.innerHTML = opciones(generosDisponibles());
+  categoriaSel.innerHTML = opciones(categoriasDisponibles());
+  generoSel.value = bookFilterGenero;
+  categoriaSel.value = bookFilterCategoria;
+}
+
+function applyBookFilters(){
+  bookFilterGenero = document.getElementById('bookFilterGenero').value;
+  bookFilterCategoria = document.getElementById('bookFilterCategoria').value;
+  bookFilterDisponibilidad = document.getElementById('bookFilterDisponibilidad').value;
   renderBooks();
 }
 
-function renderBookGenreFilters(){
-  const container = document.getElementById('bookGenreFilters');
-  if(!container) return;
-  const generos = generosDisponibles();
-  const chips = [`<button class="filter ${activeBookGenreFilter === 'todos' ? 'active' : ''}" onclick="setBookGenreFilter('todos', this)">Todos los géneros</button>`]
-    .concat(generos.map(g => `<button class="filter ${activeBookGenreFilter === g ? 'active' : ''}" onclick="setBookGenreFilter('${g.replace(/'/g, "\\'")}', this)">${g}</button>`));
-  container.innerHTML = chips.join('');
+function resetBookFilters(){
+  bookFilterGenero = 'todos';
+  bookFilterCategoria = 'todos';
+  bookFilterDisponibilidad = 'todos';
+  document.getElementById('bookSearch').value = '';
+  renderBooks();
 }
 
 function renderBooks(){
-  renderBookGenreFilters();
+  renderBookFilterOptions();
   const query = (document.getElementById('bookSearch')?.value || '').toLowerCase();
   let list = books.filter(b =>
     (b.titulo || '').toLowerCase().includes(query) ||
@@ -880,37 +1284,103 @@ function renderBooks(){
     (b.isbn || '').includes(query) ||
     (b.categoria || '').toLowerCase().includes(query)
   );
-  if(activeBookGenreFilter !== 'todos') list = list.filter(b => b.genero === activeBookGenreFilter);
+  if(bookFilterGenero !== 'todos') list = list.filter(b => b.genero === bookFilterGenero);
+  if(bookFilterCategoria !== 'todos') list = list.filter(b => b.categoria === bookFilterCategoria);
+  if(bookFilterDisponibilidad !== 'todos'){
+    list = list.filter(b => {
+      const cls = stockAlertInfo(b).cls;
+      if(bookFilterDisponibilidad === 'disponible') return cls === 'on-time';
+      if(bookFilterDisponibilidad === 'ultimos') return cls === 'due-soon';
+      if(bookFilterDisponibilidad === 'sin-stock') return cls === 'overdue';
+      return true;
+    });
+  }
 
   const container = document.getElementById('booksList');
   if(!container) return;
   if(!list.length){
-    container.innerHTML = '<div class="empty-state glass">No hay libros registrados en el catálogo.</div>';
+    container.innerHTML = '<tr><td colspan="4" class="empty-state-cell">No hay libros registrados en el catálogo.</td></tr>';
     return;
   }
 
   container.innerHTML = list.map(b => {
     const alerta = stockAlertInfo(b);
     return `
-    <div class="ticket glass">
-      <div class="edge ${b.ejemplares_disponibles > 0 ? 'on-time' : 'overdue'}"></div>
-      <div class="ticket-main">
-        <div class="title">${b.titulo}</div>
-        <div class="sub">Autor: ${b.autor || 'Desconocido'} | Género: ${b.genero || 'N/A'} | ${b.categoria || 'Sin categoría'}</div>
-        <span class="badge">ISBN: ${b.isbn || 'Sin ISBN'}</span>
-        <span class="badge" style="margin-left:6px;">${b.ubicacion_fisica || 'Sin ubicación'}</span>
-        <span class="status-chip ${alerta.cls}" style="margin-left:6px;">${alerta.label}</span>
-        <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
-          ${(b.ejemplares || []).map(e => `<span class="status-chip ${ejemplarChipClass(e.estado)}" style="cursor:${e.estado === 'prestado' ? 'default' : 'pointer'};" title="Ejemplar #${e.numero_ejemplar}: ${estadoEjemplarLabel(e.estado)}${e.estado === 'prestado' ? '' : ' (click para cambiar estado)'}" onclick="ciclarEstadoEjemplar(${e.id}, '${e.estado}')">#${e.numero_ejemplar} ${estadoEjemplarLabel(e.estado)}</span>`).join('')}
-        </div>
-      </div>
-      <div class="ticket-stub">
-        <span class="badge mono">${b.ejemplares_disponibles}/${b.cantidad_ejemplares} disp.</span>
-        <button class="action-link danger" onclick="deleteBook(${b.id})">Eliminar</button>
-      </div>
-    </div>
-  `;
+    <tr onclick="verDetalleLibro(${b.id})">
+      <td><strong>${b.titulo}</strong></td>
+      <td>${b.autor || 'Desconocido'}</td>
+      <td>${b.categoria || b.genero || '—'}</td>
+      <td><span class="status-chip ${alerta.cls}">${b.ejemplares_disponibles}/${b.cantidad_ejemplares} · ${alerta.label}</span></td>
+    </tr>`;
   }).join('');
+}
+
+// ---------- Modal de detalle de libro ----------
+function verDetalleLibro(id){
+  const b = books.find(x => x.id === id);
+  if(!b) return;
+  detalleLibroId = id;
+
+  document.getElementById('detalleLibroTitulo').textContent = b.titulo;
+  document.getElementById('detalleLibroAutor').textContent = b.autor || 'Desconocido';
+  document.getElementById('detalleLibroEditorial').textContent = b.editorial || '—';
+  document.getElementById('detalleLibroEdicion').textContent = b.edicion || '—';
+  document.getElementById('detalleLibroAnio').textContent = b.anio_publicacion || '—';
+  document.getElementById('detalleLibroGenero').textContent = b.genero || '—';
+  document.getElementById('detalleLibroCategoria').textContent = b.categoria || '—';
+  document.getElementById('detalleLibroIsbn').textContent = b.isbn || 'Sin ISBN';
+  document.getElementById('detalleLibroUbicacion').textContent = b.ubicacion_fisica || '—';
+  document.getElementById('detalleLibroPrecio').textContent = b.precio_reposicion ? `$${b.precio_reposicion}` : '—';
+
+  document.getElementById('detalleLibroEjemplares').innerHTML = (b.ejemplares || []).map(e =>
+    `<span class="status-chip ${ejemplarChipClass(e.estado)}" style="cursor:${e.estado === 'prestado' ? 'default' : 'pointer'};" title="Ejemplar #${e.numero_ejemplar}: ${estadoEjemplarLabel(e.estado)}${e.estado === 'prestado' ? '' : ' (click para cambiar estado)'}" onclick="ciclarEstadoEjemplar(${e.id}, '${e.estado}')">#${e.numero_ejemplar} ${estadoEjemplarLabel(e.estado)}</span>`
+  ).join('');
+
+  openModal('modalLibroDetalle');
+}
+
+function editarLibroDesdeDetalle(){
+  const b = books.find(x => x.id === detalleLibroId);
+  if(!b) return;
+  closeModal('modalLibroDetalle');
+  openModal('modalBook');
+
+  editingBookId = b.id;
+  document.getElementById('modalBookTitle').textContent = 'Editar Libro';
+  document.getElementById('modalBookSaveBtn').textContent = 'Guardar Cambios';
+  document.getElementById('bookCopiesField').style.display = 'none';
+
+  document.getElementById('f-book-title').value = b.titulo || '';
+  document.getElementById('f-book-author').value = b.autor || '';
+  document.getElementById('f-book-editorial').value = b.editorial || '';
+  document.getElementById('f-book-edicion').value = b.edicion || '';
+  document.getElementById('f-book-anio').value = b.anio_publicacion || '';
+  document.getElementById('f-book-genre').value = b.genero || '';
+  document.getElementById('f-book-categoria').value = b.categoria || '';
+  document.getElementById('f-book-isbn').value = b.isbn || '';
+  document.getElementById('f-book-ubicacion').value = b.ubicacion_fisica || '';
+}
+
+async function agregarEjemplaresDesdeDetalle(){
+  const b = books.find(x => x.id === detalleLibroId);
+  if(!b) return;
+  const cantidad = parseInt(prompt('¿Cuántos ejemplares nuevos querés agregar?', '1'), 10);
+  if(!cantidad || cantidad < 1) return;
+
+  try {
+    await apiFetch(`/libros/${b.id}/ejemplares`, {
+      method: 'POST', body: JSON.stringify({cantidad}),
+    });
+    showToast('Ejemplares agregados', 'success');
+    await cargarDatosIniciales();
+    verDetalleLibro(b.id);
+  } catch(err){}
+}
+
+function eliminarLibroDesdeDetalle(){
+  const id = detalleLibroId;
+  closeModal('modalLibroDetalle');
+  deleteBook(id);
 }
 
 function applyMemberFilters(){
@@ -1100,4 +1570,3 @@ function renderAll(){
 }
 
 checkSession();
-console.log('Firebase está conectado');

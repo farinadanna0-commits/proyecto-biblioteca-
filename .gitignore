@@ -5,6 +5,11 @@ backend/**/__pycache__/
 backend/instance/
 backend/.env
 
+# Backend (Node)
+node_modules/
+/data/
+.env
+
 # Sistema
 .DS_Store
 Thumbs.db

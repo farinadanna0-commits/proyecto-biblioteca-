@@ -298,6 +298,25 @@ h3.section-title{
   color:var(--ink);
 }
 .search-box svg{ flex-shrink:0; opacity:0.6; stroke:var(--ink-soft) !important; }
+.mic-btn{
+  flex-shrink:0;
+  width:30px; height:30px;
+  border:none;
+  border-radius:50%;
+  background:transparent;
+  cursor:pointer;
+  font-size:1rem;
+  line-height:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--ink-soft);
+  transition:background-color 0.15s ease, color 0.15s ease;
+}
+.mic-btn:hover{ background-color:var(--cobalt-bg); color:var(--cobalt); }
+.mic-btn.listening{ color:var(--red); animation:micPulse 1s ease-in-out infinite; }
+.mic-btn[hidden]{ display:none; }
+@keyframes micPulse{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:0.55; transform:scale(1.18); } }
 
 .filters{ display:flex; gap:8px; overflow-x:auto; padding:2px; }
 .filter{
@@ -577,9 +596,11 @@ h3.section-title{
 /* ---------- Toasts ---------- */
 .toast-wrap{
   position:fixed;
-  top:18px; right:18px;
+  top:18px; left:50%;
+  transform:translateX(-50%);
   display:flex;
   flex-direction:column;
+  align-items:center;
   gap:10px;
   z-index:400;
 }
@@ -600,14 +621,41 @@ h3.section-title{
 .toast.success{ background:var(--green); }
 .toast.info{ background:var(--cobalt); }
 .toast.danger{ background:var(--red); }
-@keyframes toastIn{ from{opacity:0; transform:translateX(20px);} to{opacity:1; transform:translateX(0);} }
-@keyframes toastOut{ to{opacity:0; transform:translateX(20px);} }
+@keyframes toastIn{ from{opacity:0; transform:translateY(-14px);} to{opacity:1; transform:translateY(0);} }
+@keyframes toastOut{ to{opacity:0; transform:translateY(-14px);} }
 
 @media(max-width:500px){
   .form-grid{ grid-template-columns:1fr; }
   .ticket{ flex-direction:row; }
   .ticket-stub{ width:110px; padding:12px; }
-  .toast-wrap{ left:14px; right:14px; top:14px; }
+  .toast-wrap{ left:14px; right:14px; top:14px; transform:none; }
   .toast{ max-width:none; }
   header .head-row{ flex-direction:column; align-items:flex-start; }
+}
+
+/* ---------- Impresión / Descarga en PDF (Reportes) ---------- */
+.print-only{ display:none; }
+
+@media print{
+  .print-only{ display:block; }
+  body *{ visibility:hidden; }
+  #tab-reportes, #tab-reportes *{ visibility:visible; }
+  #tab-reportes{ position:absolute; left:0; top:0; width:100%; padding:0; }
+  #tab-reportes .controls,
+  #tab-reportes #reporteResumen,
+  #tab-reportes #reporteResultados{ display:none !important; }
+  #reportePrintTitle h2{ margin:0 0 4px; font-size:1.3rem; }
+  #reportePrintTitle p{ margin:0 0 18px; color:#444; font-size:0.85rem; }
+  body{ background:#fff; color:#111; }
+
+  #reportePrintTable table{ width:100%; border-collapse:collapse; font-size:0.82rem; }
+  #reportePrintTable th, #reportePrintTable td{
+    border:1px solid #ccc; padding:6px 8px; text-align:left;
+    font-variant-numeric:tabular-nums;
+  }
+  #reportePrintTable thead{ display:table-row-group; }
+  #reportePrintTable thead th{ background:#eee; font-weight:700; }
+  #reportePrintTable tbody tr:nth-child(even){ background:#f7f7f7; }
+  #reportePrintTable td:first-child, #reportePrintTable th:first-child{ width:34px; text-align:right; }
+  #reportePrintTable tr{ break-inside:avoid; page-break-inside:avoid; }
 }
