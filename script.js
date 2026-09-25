@@ -344,7 +344,10 @@ function estadoDevueltoLabel(estado){
 function switchTab(tabId, evt){
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  if(evt && evt.target) evt.target.classList.add('active');
+  if(evt && evt.target){
+    evt.target.classList.add('active');
+    evt.target.scrollIntoView({behavior: 'smooth', inline: 'center', block: 'nearest'});
+  }
   const target = document.getElementById(`tab-${tabId}`);
   if(target) target.classList.add('active');
   renderAll();

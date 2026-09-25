@@ -646,6 +646,11 @@ h3.section-title{
 
   main{ padding:0 12px; margin-top:18px; }
   .dash-grid{ display:none; }
+
+  .controls{ flex-direction:column; align-items:stretch; }
+  .advanced-filters{ padding:16px; gap:12px; }
+  .advanced-filters .field{ min-width:100%; flex:1 1 100%; }
+  .advanced-filters .btn{ width:100%; flex:1 1 100%; }
 }
 
 /* ---------- Impresión / Descarga en PDF (Reportes) ---------- */
