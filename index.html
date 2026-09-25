@@ -60,14 +60,23 @@
 
 <nav class="nav-bar glass">
   <div class="nav-container">
-    <button class="nav-tab active" onclick="switchTab('home', event)">Inicio</button>
-    <button class="nav-tab" onclick="switchTab('loans', event)">Préstamos</button>
-    <button class="nav-tab" onclick="switchTab('books', event)">Catálogo</button>
-    <button class="nav-tab" onclick="switchTab('members', event)">Socios</button>
-    <button class="nav-tab" data-roles="ADMIN,BIBLIOTECARIO" onclick="switchTab('sanciones', event)">Sanciones</button>
-    <button class="nav-tab" data-roles="ADMIN,BIBLIOTECARIO" onclick="switchTab('reportes', event)">Reportes</button>
-    <button class="nav-tab" data-roles="ADMIN" onclick="switchTab('usuarios', event)">Usuarios</button>
+    <button class="nav-tab active" data-tab="home" onclick="switchTab('home', event)">Inicio</button>
+    <button class="nav-tab" data-tab="loans" onclick="switchTab('loans', event)">Préstamos</button>
+    <button class="nav-tab" data-tab="books" onclick="switchTab('books', event)">Catálogo</button>
+    <button class="nav-tab" data-tab="members" onclick="switchTab('members', event)">Socios</button>
+    <button class="nav-tab" data-tab="sanciones" data-roles="ADMIN,BIBLIOTECARIO" onclick="switchTab('sanciones', event)">Sanciones</button>
+    <button class="nav-tab" data-tab="reportes" data-roles="ADMIN,BIBLIOTECARIO" onclick="switchTab('reportes', event)">Reportes</button>
+    <button class="nav-tab" data-tab="usuarios" data-roles="ADMIN" onclick="switchTab('usuarios', event)">Usuarios</button>
   </div>
+  <select class="mobile-nav-select" id="mobileNavSelect" onchange="switchTab(this.value)">
+    <option value="home">🏠 Inicio</option>
+    <option value="loans">📖 Préstamos</option>
+    <option value="books">📚 Catálogo</option>
+    <option value="members">👥 Socios</option>
+    <option value="sanciones" data-roles="ADMIN,BIBLIOTECARIO">⚠️ Sanciones</option>
+    <option value="reportes" data-roles="ADMIN,BIBLIOTECARIO">📊 Reportes</option>
+    <option value="usuarios" data-roles="ADMIN">🔑 Usuarios</option>
+  </select>
 </nav>
 
 <main>
