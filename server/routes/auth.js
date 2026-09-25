@@ -2,7 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
-const db = require('../db');
+const { one } = require('../db');
 const { requireAuth, JWT_SECRET } = require('../middleware/auth');
 
 const router = express.Router();
@@ -19,7 +19,7 @@ function toDictUsuario(u) {
   };
 }
 
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const data = req.body || {};
   const username = (data.username || '').trim();
   const password = data.password || '';
@@ -28,7 +28,7 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
   }
 
-  const usuario = db.prepare('SELECT * FROM usuarios WHERE username = ?').get(username);
+  const usuario = await one('SELECT * FROM usuarios WHERE username = $1', [username]);
   if (!usuario || !bcrypt.compareSync(password, usuario.password_hash)) {
     return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
   }
@@ -46,8 +46,8 @@ router.post('/login', (req, res) => {
   res.json({ token, usuario: toDictUsuario(usuario) });
 });
 
-router.get('/me', requireAuth, (req, res) => {
-  const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.user.id);
+router.get('/me', requireAuth, async (req, res) => {
+  const usuario = await one('SELECT * FROM usuarios WHERE id = $1', [req.user.id]);
   if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
   res.json(toDictUsuario(usuario));
 });

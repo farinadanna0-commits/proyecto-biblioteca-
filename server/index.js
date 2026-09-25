@@ -5,6 +5,7 @@ const http = require('http');
 const https = require('https');
 const os = require('os');
 const express = require('express');
+const { initSchema } = require('./db');
 const { obtenerCertificado } = require('./cert');
 
 const appConfig = {
@@ -63,25 +64,40 @@ function direccionesLan() {
 
 const PORT = process.env.PORT || 5000;
 const HTTPS_PORT = process.env.HTTPS_PORT || 5443;
-const ips = direccionesLan();
 
-http.createServer(app).listen(PORT, () => {
-  console.log(`Biblioteca CESPA (HTTP) en esta PC: http://127.0.0.1:${PORT}`);
-});
+async function iniciar() {
+  await initSchema();
 
-obtenerCertificado().then(({ key, cert }) => {
-  https.createServer({ key, cert }, app).listen(HTTPS_PORT, () => {
-    console.log('');
-    console.log('Para entrar desde el celular u otra compu (misma red WiFi),');
-    console.log('con la cámara habilitada para escanear códigos de barras:');
-    if (ips.length) {
-      ips.forEach((ip) => console.log(`  https://${ip}:${HTTPS_PORT}`));
-    } else {
-      console.log(`  https://127.0.0.1:${HTTPS_PORT}`);
-    }
-    console.log('(el navegador va a avisar "sitio no seguro" la primera vez — es normal,');
-    console.log(' es un certificado local; tocar "Avanzado" > "Continuar de todos modos")');
+  http.createServer(app).listen(PORT, () => {
+    console.log(`Biblioteca CESPA (HTTP) escuchando en el puerto ${PORT}`);
   });
-}).catch((err) => {
-  console.error('No se pudo generar el certificado HTTPS local:', err.message);
+
+  // El certificado HTTPS local sólo hace falta para probar en la red del
+  // colegio/celular en desarrollo. En Render (u otro hosting), el propio
+  // proveedor ya da HTTPS real en el dominio público, así que se lo salta.
+  if (!process.env.RENDER) {
+    const ips = direccionesLan();
+    try {
+      const { key, cert } = await obtenerCertificado();
+      https.createServer({ key, cert }, app).listen(HTTPS_PORT, () => {
+        console.log('');
+        console.log('Para entrar desde el celular u otra compu (misma red WiFi),');
+        console.log('con la cámara habilitada para escanear códigos de barras:');
+        if (ips.length) {
+          ips.forEach((ip) => console.log(`  https://${ip}:${HTTPS_PORT}`));
+        } else {
+          console.log(`  https://127.0.0.1:${HTTPS_PORT}`);
+        }
+        console.log('(el navegador va a avisar "sitio no seguro" la primera vez — es normal,');
+        console.log(' es un certificado local; tocar "Avanzado" > "Continuar de todos modos")');
+      });
+    } catch (err) {
+      console.error('No se pudo generar el certificado HTTPS local:', err.message);
+    }
+  }
+}
+
+iniciar().catch((err) => {
+  console.error('No se pudo iniciar el servidor:', err);
+  process.exit(1);
 });

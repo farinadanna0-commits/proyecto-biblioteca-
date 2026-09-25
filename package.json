@@ -5,14 +5,15 @@
   "description": "Biblioteca Colegio Secundario San Carlos - servidor unico (API + frontend) en Node.",
   "main": "server/index.js",
   "scripts": {
-    "start": "node --experimental-sqlite server/index.js",
-    "seed": "node --experimental-sqlite server/seed.js"
+    "start": "node server/index.js",
+    "seed": "node server/seed.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
+    "pg": "^8.23.0",
     "selfsigned": "^5.5.0"
   }
 }

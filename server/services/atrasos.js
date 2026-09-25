@@ -1,4 +1,4 @@
-const db = require('../db');
+const { one, many, run } = require('../db');
 
 function hoyISO() {
   return new Date().toISOString().slice(0, 10);
@@ -17,43 +17,40 @@ function diasEntre(desdeISO, hastaISO) {
  * los endpoints de lectura/escritura de préstamos, sanciones y dashboard
  * para que la detección sea siempre automática, sin depender de un cron.
  */
-function detectarYProcesarAtrasos(config) {
+async function detectarYProcesarAtrasos(config) {
   const hoy = hoyISO();
-  const activosVencidos = db
-    .prepare(
-      `SELECT * FROM prestamos WHERE estado = 'activo' AND fecha_estimada_devolucion < ?`
-    )
-    .all(hoy);
+  const activosVencidos = await many(
+    `SELECT * FROM prestamos WHERE estado = 'activo' AND fecha_estimada_devolucion < $1`,
+    [hoy]
+  );
 
   for (const prestamo of activosVencidos) {
-    db.prepare(`UPDATE prestamos SET estado = 'atrasado' WHERE id = ?`).run(prestamo.id);
+    await run(`UPDATE prestamos SET estado = 'atrasado' WHERE id = $1`, [prestamo.id]);
     const dias = diasEntre(prestamo.fecha_estimada_devolucion, hoy);
     const monto = dias * config.MULTA_POR_DIA_ATRASO;
 
-    const sancion = db
-      .prepare(`SELECT * FROM sanciones WHERE prestamo_id = ? AND tipo = 'atraso'`)
-      .get(prestamo.id);
+    const sancion = await one(
+      `SELECT * FROM sanciones WHERE prestamo_id = $1 AND tipo = 'atraso'`,
+      [prestamo.id]
+    );
 
     if (sancion) {
       if (sancion.estado_pago === 'pendiente') {
-        db.prepare(`UPDATE sanciones SET dias_atraso = ?, monto_multa = ? WHERE id = ?`).run(
-          dias,
-          monto,
-          sancion.id
-        );
+        await run(`UPDATE sanciones SET dias_atraso = $1, monto_multa = $2 WHERE id = $3`, [dias, monto, sancion.id]);
       } else {
-        db.prepare(`UPDATE sanciones SET dias_atraso = ? WHERE id = ?`).run(dias, sancion.id);
+        await run(`UPDATE sanciones SET dias_atraso = $1 WHERE id = $2`, [dias, sancion.id]);
       }
     } else {
-      db.prepare(
+      await run(
         `INSERT INTO sanciones (prestamo_id, socio_id, tipo, dias_atraso, monto_multa, estado_pago)
-         VALUES (?, ?, 'atraso', ?, ?, 'pendiente')`
-      ).run(prestamo.id, prestamo.socio_id, dias, monto);
+         VALUES ($1, $2, 'atraso', $3, $4, 'pendiente')`,
+        [prestamo.id, prestamo.socio_id, dias, monto]
+      );
     }
 
-    const socio = db.prepare(`SELECT * FROM socios WHERE id = ?`).get(prestamo.socio_id);
+    const socio = await one(`SELECT * FROM socios WHERE id = $1`, [prestamo.socio_id]);
     if (socio && socio.estado_plan === 'al_dia') {
-      db.prepare(`UPDATE socios SET estado_plan = 'suspendido' WHERE id = ?`).run(socio.id);
+      await run(`UPDATE socios SET estado_plan = 'suspendido' WHERE id = $1`, [socio.id]);
     }
   }
 
@@ -64,16 +61,17 @@ function detectarYProcesarAtrasos(config) {
  * Recalcula el estado del plan de un socio en base a sus sanciones
  * pendientes. Un socio 'bloqueado' manualmente no se reactiva solo.
  */
-function actualizarEstadoPlanSocio(socioId) {
-  const socio = db.prepare(`SELECT * FROM socios WHERE id = ?`).get(socioId);
+async function actualizarEstadoPlanSocio(socioId) {
+  const socio = await one(`SELECT * FROM socios WHERE id = $1`, [socioId]);
   if (!socio || socio.estado_plan === 'bloqueado') return;
 
-  const { total } = db
-    .prepare(`SELECT COUNT(*) AS total FROM sanciones WHERE socio_id = ? AND estado_pago = 'pendiente'`)
-    .get(socioId);
+  const { total } = await one(
+    `SELECT COUNT(*)::int AS total FROM sanciones WHERE socio_id = $1 AND estado_pago = 'pendiente'`,
+    [socioId]
+  );
 
   const nuevoEstado = total === 0 ? 'al_dia' : 'suspendido';
-  db.prepare(`UPDATE socios SET estado_plan = ? WHERE id = ?`).run(nuevoEstado, socioId);
+  await run(`UPDATE socios SET estado_plan = $1 WHERE id = $2`, [nuevoEstado, socioId]);
 }
 
 module.exports = { detectarYProcesarAtrasos, actualizarEstadoPlanSocio, hoyISO };

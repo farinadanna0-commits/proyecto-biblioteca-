@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 
-const db = require('../db');
+const { one, many, run } = require('../db');
 const { requireAuth, requireRoles } = require('../middleware/auth');
 const { detectarYProcesarAtrasos, actualizarEstadoPlanSocio, hoyISO } = require('../services/atrasos');
 
@@ -23,10 +23,10 @@ function esFechaValida(valor) {
 
 const MODALIDADES = ['domicilio', 'sala'];
 
-function toDictPrestamo(p) {
-  const ejemplar = db.prepare('SELECT * FROM ejemplares WHERE id = ?').get(p.ejemplar_id);
-  const libro = ejemplar ? db.prepare('SELECT * FROM libros WHERE id = ?').get(ejemplar.libro_id) : null;
-  const socio = db.prepare('SELECT * FROM socios WHERE id = ?').get(p.socio_id);
+async function toDictPrestamo(p) {
+  const ejemplar = await one('SELECT * FROM ejemplares WHERE id = $1', [p.ejemplar_id]);
+  const libro = ejemplar ? await one('SELECT * FROM libros WHERE id = $1', [ejemplar.libro_id]) : null;
+  const socio = await one('SELECT * FROM socios WHERE id = $1', [p.socio_id]);
 
   return {
     id: p.id,
@@ -51,22 +51,22 @@ function toDictPrestamo(p) {
   };
 }
 
-router.get('/', requireAuth, (req, res) => {
-  detectarYProcesarAtrasos(req.appConfig);
+router.get('/', requireAuth, async (req, res) => {
+  await detectarYProcesarAtrasos(req.appConfig);
 
   const { estado, socio_id } = req.query;
   let sql = 'SELECT * FROM prestamos WHERE 1=1';
   const params = [];
-  if (estado) { sql += ' AND estado = ?'; params.push(estado); }
-  if (socio_id) { sql += ' AND socio_id = ?'; params.push(Number(socio_id)); }
+  if (estado) { params.push(estado); sql += ` AND estado = $${params.length}`; }
+  if (socio_id) { params.push(Number(socio_id)); sql += ` AND socio_id = $${params.length}`; }
   sql += ' ORDER BY fecha_prestamo DESC';
 
-  const prestamos = db.prepare(sql).all(...params);
-  res.json(prestamos.map(toDictPrestamo));
+  const prestamos = await many(sql, params);
+  res.json(await Promise.all(prestamos.map(toDictPrestamo)));
 });
 
-router.post('/', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), (req, res) => {
-  detectarYProcesarAtrasos(req.appConfig);
+router.post('/', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), async (req, res) => {
+  await detectarYProcesarAtrasos(req.appConfig);
 
   const data = req.body || {};
   const libroId = data.libro_id;
@@ -83,7 +83,7 @@ router.post('/', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), (req, res)
     return res.status(400).json({ error: `Modalidad inválida. Debe ser una de: ${MODALIDADES.join(', ')}` });
   }
 
-  const socio = db.prepare('SELECT * FROM socios WHERE id = ?').get(Number(socioId));
+  const socio = await one('SELECT * FROM socios WHERE id = $1', [Number(socioId)]);
   if (!socio) return res.status(404).json({ error: 'Socio no encontrado' });
   if (socio.estado_plan !== 'al_dia') {
     return res.status(403).json({
@@ -96,13 +96,14 @@ router.post('/', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), (req, res)
     });
   }
 
-  const libro = db.prepare('SELECT * FROM libros WHERE id = ?').get(Number(libroId));
+  const libro = await one('SELECT * FROM libros WHERE id = $1', [Number(libroId)]);
   if (!libro) return res.status(404).json({ error: 'Libro no encontrado' });
 
   if (modalidad === 'domicilio') {
-    const { n: disponibles } = db
-      .prepare(`SELECT COUNT(*) AS n FROM ejemplares WHERE libro_id = ? AND estado = 'disponible'`)
-      .get(Number(libroId));
+    const { n: disponibles } = await one(
+      `SELECT COUNT(*)::int AS n FROM ejemplares WHERE libro_id = $1 AND estado = 'disponible'`,
+      [Number(libroId)]
+    );
     if (disponibles === 1 && req.user.rol !== 'ADMIN') {
       return res.status(403).json({
         error: 'Este es el último ejemplar disponible de este libro: se reserva para leer en la biblioteca (modalidad "sala"). Sólo un administrador puede autorizar llevarlo a domicilio.',
@@ -110,9 +111,10 @@ router.post('/', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), (req, res)
     }
   }
 
-  const ejemplar = db
-    .prepare(`SELECT * FROM ejemplares WHERE libro_id = ? AND estado = 'disponible' LIMIT 1`)
-    .get(Number(libroId));
+  const ejemplar = await one(
+    `SELECT * FROM ejemplares WHERE libro_id = $1 AND estado = 'disponible' LIMIT 1`,
+    [Number(libroId)]
+  );
   if (!ejemplar) return res.status(409).json({ error: 'No hay ejemplares disponibles de este libro' });
 
   if (!esFechaValida(fechaPrestamo) || (fechaEstimadaInput && !esFechaValida(fechaEstimadaInput))) {
@@ -122,24 +124,22 @@ router.post('/', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), (req, res)
   const fechaEstimada = fechaEstimadaInput || sumarDias(fechaPrestamo, dias);
 
   const codigo = generarCodigo();
-  const info = db
-    .prepare(
-      `INSERT INTO prestamos (codigo, ejemplar_id, socio_id, encargado_id, fecha_prestamo, fecha_estimada_devolucion, estado, modalidad)
-       VALUES (?, ?, ?, ?, ?, ?, 'activo', ?)`
-    )
-    .run(codigo, ejemplar.id, Number(socioId), req.user.id, fechaPrestamo, fechaEstimada, modalidad);
+  const prestamo = await one(
+    `INSERT INTO prestamos (codigo, ejemplar_id, socio_id, encargado_id, fecha_prestamo, fecha_estimada_devolucion, estado, modalidad)
+     VALUES ($1, $2, $3, $4, $5, $6, 'activo', $7) RETURNING *`,
+    [codigo, ejemplar.id, Number(socioId), req.user.id, fechaPrestamo, fechaEstimada, modalidad]
+  );
 
-  db.prepare(`UPDATE ejemplares SET estado = 'prestado' WHERE id = ?`).run(ejemplar.id);
+  await run(`UPDATE ejemplares SET estado = 'prestado' WHERE id = $1`, [ejemplar.id]);
 
-  const prestamo = db.prepare('SELECT * FROM prestamos WHERE id = ?').get(Number(info.lastInsertRowid));
-  res.status(201).json(toDictPrestamo(prestamo));
+  res.status(201).json(await toDictPrestamo(prestamo));
 });
 
-router.put('/:id/renovar', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), (req, res) => {
-  detectarYProcesarAtrasos(req.appConfig);
+router.put('/:id/renovar', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), async (req, res) => {
+  await detectarYProcesarAtrasos(req.appConfig);
 
   const prestamoId = Number(req.params.id);
-  const prestamo = db.prepare('SELECT * FROM prestamos WHERE id = ?').get(prestamoId);
+  const prestamo = await one('SELECT * FROM prestamos WHERE id = $1', [prestamoId]);
   if (!prestamo) return res.status(404).json({ error: 'Recurso no encontrado' });
   if (prestamo.estado !== 'activo') {
     return res.status(400).json({ error: 'Sólo se pueden renovar préstamos activos (no vencidos, devueltos o perdidos)' });
@@ -148,15 +148,15 @@ router.put('/:id/renovar', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), 
   const diasInput = parseInt((req.body || {}).dias, 10);
   const dias = Number.isFinite(diasInput) && diasInput > 0 ? diasInput : req.appConfig.DIAS_PRESTAMO_DEFAULT;
   const nuevaFecha = sumarDias(prestamo.fecha_estimada_devolucion, dias);
-  db.prepare('UPDATE prestamos SET fecha_estimada_devolucion = ? WHERE id = ?').run(nuevaFecha, prestamoId);
+  await run('UPDATE prestamos SET fecha_estimada_devolucion = $1 WHERE id = $2', [nuevaFecha, prestamoId]);
 
-  const actualizado = db.prepare('SELECT * FROM prestamos WHERE id = ?').get(prestamoId);
-  res.json(toDictPrestamo(actualizado));
+  const actualizado = await one('SELECT * FROM prestamos WHERE id = $1', [prestamoId]);
+  res.json(await toDictPrestamo(actualizado));
 });
 
-router.put('/:id/devolver', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), (req, res) => {
+router.put('/:id/devolver', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), async (req, res) => {
   const prestamoId = Number(req.params.id);
-  const prestamo = db.prepare('SELECT * FROM prestamos WHERE id = ?').get(prestamoId);
+  const prestamo = await one('SELECT * FROM prestamos WHERE id = $1', [prestamoId]);
   if (!prestamo) return res.status(404).json({ error: 'Recurso no encontrado' });
   if (prestamo.estado === 'devuelto') {
     return res.status(400).json({ error: 'Este préstamo ya fue devuelto' });
@@ -167,75 +167,79 @@ router.put('/:id/devolver', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'),
   const observaciones = data.observaciones || null;
   const hoy = hoyISO();
 
-  const ejemplar = db.prepare('SELECT * FROM ejemplares WHERE id = ?').get(prestamo.ejemplar_id);
+  const ejemplar = await one('SELECT * FROM ejemplares WHERE id = $1', [prestamo.ejemplar_id]);
 
   if (estadoLibro === 'perdida') {
-    db.prepare(
-      `UPDATE prestamos SET fecha_real_devolucion = ?, estado_libro_devuelto = ?, observaciones = ?,
-        encargado_recepcion_id = ?, estado = 'perdido' WHERE id = ?`
-    ).run(hoy, estadoLibro, observaciones, req.user.id, prestamoId);
+    await run(
+      `UPDATE prestamos SET fecha_real_devolucion = $1, estado_libro_devuelto = $2, observaciones = $3,
+        encargado_recepcion_id = $4, estado = 'perdido' WHERE id = $5`,
+      [hoy, estadoLibro, observaciones, req.user.id, prestamoId]
+    );
 
-    if (ejemplar) db.prepare(`UPDATE ejemplares SET estado = 'perdido' WHERE id = ?`).run(ejemplar.id);
+    if (ejemplar) await run(`UPDATE ejemplares SET estado = 'perdido' WHERE id = $1`, [ejemplar.id]);
 
-    const libro = ejemplar ? db.prepare('SELECT * FROM libros WHERE id = ?').get(ejemplar.libro_id) : null;
+    const libro = ejemplar ? await one('SELECT * FROM libros WHERE id = $1', [ejemplar.libro_id]) : null;
     const costo = libro && libro.precio_reposicion ? libro.precio_reposicion : req.appConfig.COSTO_REPOSICION_DEFAULT;
 
-    db.prepare(
+    await run(
       `INSERT INTO sanciones (prestamo_id, socio_id, tipo, monto_reposicion, estado_pago)
-       VALUES (?, ?, 'perdida', ?, 'pendiente')`
-    ).run(prestamoId, prestamo.socio_id, costo);
+       VALUES ($1, $2, 'perdida', $3, 'pendiente')`,
+      [prestamoId, prestamo.socio_id, costo]
+    );
   } else {
-    db.prepare(
-      `UPDATE prestamos SET fecha_real_devolucion = ?, estado_libro_devuelto = ?, observaciones = ?,
-        encargado_recepcion_id = ?, estado = 'devuelto' WHERE id = ?`
-    ).run(hoy, estadoLibro, observaciones, req.user.id, prestamoId);
+    await run(
+      `UPDATE prestamos SET fecha_real_devolucion = $1, estado_libro_devuelto = $2, observaciones = $3,
+        encargado_recepcion_id = $4, estado = 'devuelto' WHERE id = $5`,
+      [hoy, estadoLibro, observaciones, req.user.id, prestamoId]
+    );
 
     if (ejemplar) {
       const nuevoEstado = ['dano_menor', 'dano_mayor'].includes(estadoLibro) ? 'dañado' : 'disponible';
-      db.prepare('UPDATE ejemplares SET estado = ? WHERE id = ?').run(nuevoEstado, ejemplar.id);
+      await run('UPDATE ejemplares SET estado = $1 WHERE id = $2', [nuevoEstado, ejemplar.id]);
     }
   }
 
-  actualizarEstadoPlanSocio(prestamo.socio_id);
-  const actualizado = db.prepare('SELECT * FROM prestamos WHERE id = ?').get(prestamoId);
-  res.json(toDictPrestamo(actualizado));
+  await actualizarEstadoPlanSocio(prestamo.socio_id);
+  const actualizado = await one('SELECT * FROM prestamos WHERE id = $1', [prestamoId]);
+  res.json(await toDictPrestamo(actualizado));
 });
 
-router.put('/:id/reabrir', requireRoles('ADMIN', 'BIBLIOTECARIO'), (req, res) => {
+router.put('/:id/reabrir', requireRoles('ADMIN', 'BIBLIOTECARIO'), async (req, res) => {
   const prestamoId = Number(req.params.id);
-  const prestamo = db.prepare('SELECT * FROM prestamos WHERE id = ?').get(prestamoId);
+  const prestamo = await one('SELECT * FROM prestamos WHERE id = $1', [prestamoId]);
   if (!prestamo) return res.status(404).json({ error: 'Recurso no encontrado' });
   if (!['devuelto', 'perdido'].includes(prestamo.estado)) {
     return res.status(400).json({ error: 'Sólo se puede reabrir un préstamo devuelto o marcado como perdido' });
   }
 
-  const ejemplar = db.prepare('SELECT * FROM ejemplares WHERE id = ?').get(prestamo.ejemplar_id);
-  if (ejemplar) db.prepare(`UPDATE ejemplares SET estado = 'prestado' WHERE id = ?`).run(ejemplar.id);
+  const ejemplar = await one('SELECT * FROM ejemplares WHERE id = $1', [prestamo.ejemplar_id]);
+  if (ejemplar) await run(`UPDATE ejemplares SET estado = 'prestado' WHERE id = $1`, [ejemplar.id]);
 
   const nuevoEstado = prestamo.fecha_estimada_devolucion >= hoyISO() ? 'activo' : 'atrasado';
-  db.prepare(
-    `UPDATE prestamos SET estado = ?, fecha_real_devolucion = NULL, estado_libro_devuelto = NULL WHERE id = ?`
-  ).run(nuevoEstado, prestamoId);
+  await run(
+    `UPDATE prestamos SET estado = $1, fecha_real_devolucion = NULL, estado_libro_devuelto = NULL WHERE id = $2`,
+    [nuevoEstado, prestamoId]
+  );
 
-  db.prepare(`DELETE FROM sanciones WHERE prestamo_id = ? AND tipo = 'perdida'`).run(prestamoId);
+  await run(`DELETE FROM sanciones WHERE prestamo_id = $1 AND tipo = 'perdida'`, [prestamoId]);
 
-  actualizarEstadoPlanSocio(prestamo.socio_id);
-  const actualizado = db.prepare('SELECT * FROM prestamos WHERE id = ?').get(prestamoId);
-  res.json(toDictPrestamo(actualizado));
+  await actualizarEstadoPlanSocio(prestamo.socio_id);
+  const actualizado = await one('SELECT * FROM prestamos WHERE id = $1', [prestamoId]);
+  res.json(await toDictPrestamo(actualizado));
 });
 
-router.delete('/:id', requireRoles('ADMIN'), (req, res) => {
+router.delete('/:id', requireRoles('ADMIN'), async (req, res) => {
   const prestamoId = Number(req.params.id);
-  const prestamo = db.prepare('SELECT * FROM prestamos WHERE id = ?').get(prestamoId);
+  const prestamo = await one('SELECT * FROM prestamos WHERE id = $1', [prestamoId]);
   if (!prestamo) return res.status(404).json({ error: 'Recurso no encontrado' });
 
-  const ejemplar = db.prepare('SELECT * FROM ejemplares WHERE id = ?').get(prestamo.ejemplar_id);
+  const ejemplar = await one('SELECT * FROM ejemplares WHERE id = $1', [prestamo.ejemplar_id]);
   if (ejemplar && ejemplar.estado === 'prestado') {
-    db.prepare(`UPDATE ejemplares SET estado = 'disponible' WHERE id = ?`).run(ejemplar.id);
+    await run(`UPDATE ejemplares SET estado = 'disponible' WHERE id = $1`, [ejemplar.id]);
   }
 
-  db.prepare('DELETE FROM sanciones WHERE prestamo_id = ?').run(prestamoId);
-  db.prepare('DELETE FROM prestamos WHERE id = ?').run(prestamoId);
+  await run('DELETE FROM sanciones WHERE prestamo_id = $1', [prestamoId]);
+  await run('DELETE FROM prestamos WHERE id = $1', [prestamoId]);
   res.json({ mensaje: 'Préstamo eliminado' });
 });
 

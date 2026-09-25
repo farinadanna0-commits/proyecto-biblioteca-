@@ -11,18 +11,19 @@ Autenticación y Panel Principal.
 ```
 proyecto-biblioteca/
   index.html, style.css, script.js   Frontend
-  server/                             API REST en Node/Express + SQLite (node:sqlite)
-  data/biblioteca.sqlite              Base de datos (se crea sola, no se versiona)
+  server/                             API REST en Node/Express + Postgres (Supabase)
 ```
 
 ## Puesta en marcha rápida
 
-Un solo servidor Node levanta la API y el frontend juntos. Requiere Node 22+.
+Un solo servidor Node levanta la API y el frontend juntos. Requiere Node 22+ y un
+proyecto en [Supabase](https://supabase.com) (gratis) para la base de datos.
 
 ```bash
-npm install    # sólo una vez
-npm run seed   # sólo una vez (crea la base y los usuarios de demo)
-npm start      # cada vez que quieras usar la app
+cp .env.example .env   # completar DATABASE_URL con la cadena de conexión de tu proyecto Supabase
+npm install             # sólo una vez
+npm run seed            # sólo una vez (crea las tablas y carga los datos de demo)
+npm start                # cada vez que quieras usar la app
 ```
 
 Abrir `http://127.0.0.1:5000` en el navegador.

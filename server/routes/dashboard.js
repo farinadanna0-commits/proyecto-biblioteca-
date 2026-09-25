@@ -1,32 +1,30 @@
 const express = require('express');
 
-const db = require('../db');
+const { one, many } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { detectarYProcesarAtrasos } = require('../services/atrasos');
 const { toDictPrestamo } = require('./prestamos');
 
 const router = express.Router();
 
-router.get('/resumen', requireAuth, (req, res) => {
-  detectarYProcesarAtrasos(req.appConfig);
+router.get('/resumen', requireAuth, async (req, res) => {
+  await detectarYProcesarAtrasos(req.appConfig);
 
-  const activos = db.prepare(`SELECT COUNT(*) AS n FROM prestamos WHERE estado = 'activo'`).get().n;
-  const vencidos = db.prepare(`SELECT COUNT(*) AS n FROM prestamos WHERE estado = 'atrasado'`).get().n;
-  const totalLibros = db.prepare('SELECT COUNT(*) AS n FROM libros').get().n;
-  const totalSocios = db.prepare('SELECT COUNT(*) AS n FROM socios').get().n;
+  const activos = (await one(`SELECT COUNT(*)::int AS n FROM prestamos WHERE estado = 'activo'`)).n;
+  const vencidos = (await one(`SELECT COUNT(*)::int AS n FROM prestamos WHERE estado = 'atrasado'`)).n;
+  const totalLibros = (await one('SELECT COUNT(*)::int AS n FROM libros')).n;
+  const totalSocios = (await one('SELECT COUNT(*)::int AS n FROM socios')).n;
 
-  const notificaciones = db
-    .prepare(
-      `SELECT * FROM prestamos WHERE estado = 'atrasado' ORDER BY fecha_estimada_devolucion LIMIT 10`
-    )
-    .all();
+  const notificaciones = await many(
+    `SELECT * FROM prestamos WHERE estado = 'atrasado' ORDER BY fecha_estimada_devolucion LIMIT 10`
+  );
 
   res.json({
     prestamos_activos: activos,
     prestamos_vencidos: vencidos,
     total_libros: totalLibros,
     total_socios: totalSocios,
-    notificaciones: notificaciones.map(toDictPrestamo),
+    notificaciones: await Promise.all(notificaciones.map(toDictPrestamo)),
   });
 });
 

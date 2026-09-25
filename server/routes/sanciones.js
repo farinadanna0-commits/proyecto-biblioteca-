@@ -1,14 +1,14 @@
 const express = require('express');
 
-const db = require('../db');
+const { one, many, run } = require('../db');
 const { requireRoles } = require('../middleware/auth');
 const { detectarYProcesarAtrasos, actualizarEstadoPlanSocio } = require('../services/atrasos');
 
 const router = express.Router();
 
-function toDictSancion(s) {
-  const prestamo = db.prepare('SELECT * FROM prestamos WHERE id = ?').get(s.prestamo_id);
-  const socio = db.prepare('SELECT * FROM socios WHERE id = ?').get(s.socio_id);
+async function toDictSancion(s) {
+  const prestamo = await one('SELECT * FROM prestamos WHERE id = $1', [s.prestamo_id]);
+  const socio = await one('SELECT * FROM socios WHERE id = $1', [s.socio_id]);
   const montoMulta = s.monto_multa || 0;
   const montoReposicion = s.monto_reposicion || 0;
 
@@ -29,35 +29,33 @@ function toDictSancion(s) {
   };
 }
 
-router.get('/', requireRoles('ADMIN', 'BIBLIOTECARIO'), (req, res) => {
-  detectarYProcesarAtrasos(req.appConfig);
+router.get('/', requireRoles('ADMIN', 'BIBLIOTECARIO'), async (req, res) => {
+  await detectarYProcesarAtrasos(req.appConfig);
 
   const { estado_pago, tipo } = req.query;
   let sql = 'SELECT * FROM sanciones WHERE 1=1';
   const params = [];
-  if (estado_pago) { sql += ' AND estado_pago = ?'; params.push(estado_pago); }
-  if (tipo) { sql += ' AND tipo = ?'; params.push(tipo); }
+  if (estado_pago) { params.push(estado_pago); sql += ` AND estado_pago = $${params.length}`; }
+  if (tipo) { params.push(tipo); sql += ` AND tipo = $${params.length}`; }
   sql += ' ORDER BY fecha_generada DESC';
 
-  const sanciones = db.prepare(sql).all(...params);
-  res.json(sanciones.map(toDictSancion));
+  const sanciones = await many(sql, params);
+  res.json(await Promise.all(sanciones.map(toDictSancion)));
 });
 
-router.put('/:id/pagar', requireRoles('ADMIN', 'BIBLIOTECARIO'), (req, res) => {
+router.put('/:id/pagar', requireRoles('ADMIN', 'BIBLIOTECARIO'), async (req, res) => {
   const sancionId = Number(req.params.id);
-  const sancion = db.prepare('SELECT * FROM sanciones WHERE id = ?').get(sancionId);
+  const sancion = await one('SELECT * FROM sanciones WHERE id = $1', [sancionId]);
   if (!sancion) return res.status(404).json({ error: 'Recurso no encontrado' });
   if (sancion.estado_pago === 'pagado') {
     return res.status(400).json({ error: 'Esta sanción ya fue pagada' });
   }
 
-  db.prepare(
-    `UPDATE sanciones SET estado_pago = 'pagado', fecha_pagada = datetime('now') WHERE id = ?`
-  ).run(sancionId);
+  await run(`UPDATE sanciones SET estado_pago = 'pagado', fecha_pagada = now() WHERE id = $1`, [sancionId]);
 
-  actualizarEstadoPlanSocio(sancion.socio_id);
-  const actualizado = db.prepare('SELECT * FROM sanciones WHERE id = ?').get(sancionId);
-  res.json(toDictSancion(actualizado));
+  await actualizarEstadoPlanSocio(sancion.socio_id);
+  const actualizado = await one('SELECT * FROM sanciones WHERE id = $1', [sancionId]);
+  res.json(await toDictSancion(actualizado));
 });
 
 module.exports = { router, toDictSancion };

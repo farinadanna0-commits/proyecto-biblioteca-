@@ -1,6 +1,6 @@
 const express = require('express');
 
-const db = require('../db');
+const { one, many, run } = require('../db');
 const { requireAuth, requireRoles } = require('../middleware/auth');
 
 const router = express.Router();
@@ -16,8 +16,8 @@ function toDictEjemplar(e) {
   };
 }
 
-function toDictLibro(libro, incluirEjemplares = true) {
-  const ejemplares = db.prepare('SELECT * FROM ejemplares WHERE libro_id = ?').all(libro.id);
+async function toDictLibro(libro, incluirEjemplares = true) {
+  const ejemplares = await many('SELECT * FROM ejemplares WHERE libro_id = $1', [libro.id]);
   const data = {
     id: libro.id,
     titulo: libro.titulo,
@@ -39,20 +39,20 @@ function toDictLibro(libro, incluirEjemplares = true) {
   return data;
 }
 
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { titulo, autor, genero, categoria, isbn, disponible } = req.query;
 
   let sql = 'SELECT * FROM libros WHERE 1=1';
   const params = [];
-  if (titulo) { sql += ' AND titulo LIKE ? COLLATE NOCASE'; params.push(`%${titulo}%`); }
-  if (autor) { sql += ' AND autor LIKE ? COLLATE NOCASE'; params.push(`%${autor}%`); }
-  if (genero) { sql += ' AND genero LIKE ? COLLATE NOCASE'; params.push(`%${genero}%`); }
-  if (categoria) { sql += ' AND categoria LIKE ? COLLATE NOCASE'; params.push(`%${categoria}%`); }
-  if (isbn) { sql += ' AND isbn LIKE ? COLLATE NOCASE'; params.push(`%${isbn}%`); }
+  if (titulo) { params.push(`%${titulo}%`); sql += ` AND titulo ILIKE $${params.length}`; }
+  if (autor) { params.push(`%${autor}%`); sql += ` AND autor ILIKE $${params.length}`; }
+  if (genero) { params.push(`%${genero}%`); sql += ` AND genero ILIKE $${params.length}`; }
+  if (categoria) { params.push(`%${categoria}%`); sql += ` AND categoria ILIKE $${params.length}`; }
+  if (isbn) { params.push(`%${isbn}%`); sql += ` AND isbn ILIKE $${params.length}`; }
   sql += ' ORDER BY titulo';
 
-  const libros = db.prepare(sql).all(...params);
-  let resultado = libros.map((l) => toDictLibro(l));
+  const libros = await many(sql, params);
+  let resultado = await Promise.all(libros.map((l) => toDictLibro(l)));
 
   if (disponible === 'true') {
     resultado = resultado.filter((l) => l.ejemplares_disponibles > 0);
@@ -61,13 +61,13 @@ router.get('/', requireAuth, (req, res) => {
   res.json(resultado);
 });
 
-router.get('/:id', requireAuth, (req, res) => {
-  const libro = db.prepare('SELECT * FROM libros WHERE id = ?').get(Number(req.params.id));
+router.get('/:id', requireAuth, async (req, res) => {
+  const libro = await one('SELECT * FROM libros WHERE id = $1', [Number(req.params.id)]);
   if (!libro) return res.status(404).json({ error: 'Recurso no encontrado' });
-  res.json(toDictLibro(libro));
+  res.json(await toDictLibro(libro));
 });
 
-router.post('/', requireRoles('ADMIN', 'BIBLIOTECARIO'), (req, res) => {
+router.post('/', requireRoles('ADMIN', 'BIBLIOTECARIO'), async (req, res) => {
   const data = req.body || {};
   const titulo = (data.titulo || '').trim();
   const autor = (data.autor || '').trim();
@@ -78,12 +78,10 @@ router.post('/', requireRoles('ADMIN', 'BIBLIOTECARIO'), (req, res) => {
   if (!Number.isFinite(cantidad)) cantidad = 1;
   cantidad = Math.max(cantidad, 1);
 
-  const info = db
-    .prepare(
-      `INSERT INTO libros (titulo, autor, editorial, edicion, anio_publicacion, genero, categoria, isbn, ubicacion_fisica, precio_reposicion)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
+  const libro = await one(
+    `INSERT INTO libros (titulo, autor, editorial, edicion, anio_publicacion, genero, categoria, isbn, ubicacion_fisica, precio_reposicion)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+    [
       titulo,
       autor || 'Desconocido',
       data.editorial || null,
@@ -93,24 +91,20 @@ router.post('/', requireRoles('ADMIN', 'BIBLIOTECARIO'), (req, res) => {
       data.categoria || null,
       data.isbn || null,
       data.ubicacion_fisica || null,
-      data.precio_reposicion || null
-    );
-
-  const libroId = Number(info.lastInsertRowid);
-  const insertEjemplar = db.prepare(
-    'INSERT INTO ejemplares (libro_id, numero_ejemplar, estado) VALUES (?, ?, ?)'
+      data.precio_reposicion || null,
+    ]
   );
+
   for (let n = 1; n <= cantidad; n++) {
-    insertEjemplar.run(libroId, n, 'disponible');
+    await run('INSERT INTO ejemplares (libro_id, numero_ejemplar, estado) VALUES ($1, $2, $3)', [libro.id, n, 'disponible']);
   }
 
-  const libro = db.prepare('SELECT * FROM libros WHERE id = ?').get(libroId);
-  res.status(201).json(toDictLibro(libro));
+  res.status(201).json(await toDictLibro(libro));
 });
 
-router.put('/:id', requireRoles('ADMIN', 'BIBLIOTECARIO'), (req, res) => {
+router.put('/:id', requireRoles('ADMIN', 'BIBLIOTECARIO'), async (req, res) => {
   const libroId = Number(req.params.id);
-  const libro = db.prepare('SELECT * FROM libros WHERE id = ?').get(libroId);
+  const libro = await one('SELECT * FROM libros WHERE id = $1', [libroId]);
   if (!libro) return res.status(404).json({ error: 'Recurso no encontrado' });
 
   const data = req.body || {};
@@ -120,28 +114,28 @@ router.put('/:id', requireRoles('ADMIN', 'BIBLIOTECARIO'), (req, res) => {
   ];
   const actualizaciones = campos.filter((c) => c in data);
   if (actualizaciones.length) {
-    const set = actualizaciones.map((c) => `${c} = ?`).join(', ');
     const valores = actualizaciones.map((c) => data[c]);
-    db.prepare(`UPDATE libros SET ${set} WHERE id = ?`).run(...valores, libroId);
+    const set = actualizaciones.map((c, i) => `${c} = $${i + 1}`).join(', ');
+    await run(`UPDATE libros SET ${set} WHERE id = $${valores.length + 1}`, [...valores, libroId]);
   }
 
-  const actualizado = db.prepare('SELECT * FROM libros WHERE id = ?').get(libroId);
-  res.json(toDictLibro(actualizado));
+  const actualizado = await one('SELECT * FROM libros WHERE id = $1', [libroId]);
+  res.json(await toDictLibro(actualizado));
 });
 
-router.delete('/:id', requireRoles('ADMIN'), (req, res) => {
+router.delete('/:id', requireRoles('ADMIN'), async (req, res) => {
   const libroId = Number(req.params.id);
-  const libro = db.prepare('SELECT * FROM libros WHERE id = ?').get(libroId);
+  const libro = await one('SELECT * FROM libros WHERE id = $1', [libroId]);
   if (!libro) return res.status(404).json({ error: 'Recurso no encontrado' });
 
-  db.prepare('DELETE FROM ejemplares WHERE libro_id = ?').run(libroId);
-  db.prepare('DELETE FROM libros WHERE id = ?').run(libroId);
+  await run('DELETE FROM ejemplares WHERE libro_id = $1', [libroId]);
+  await run('DELETE FROM libros WHERE id = $1', [libroId]);
   res.json({ mensaje: 'Libro eliminado del catálogo' });
 });
 
-router.post('/:id/ejemplares', requireRoles('ADMIN', 'BIBLIOTECARIO'), (req, res) => {
+router.post('/:id/ejemplares', requireRoles('ADMIN', 'BIBLIOTECARIO'), async (req, res) => {
   const libroId = Number(req.params.id);
-  const libro = db.prepare('SELECT * FROM libros WHERE id = ?').get(libroId);
+  const libro = await one('SELECT * FROM libros WHERE id = $1', [libroId]);
   if (!libro) return res.status(404).json({ error: 'Recurso no encontrado' });
 
   const data = req.body || {};
@@ -149,22 +143,19 @@ router.post('/:id/ejemplares', requireRoles('ADMIN', 'BIBLIOTECARIO'), (req, res
   if (!Number.isFinite(cantidad)) cantidad = 1;
   cantidad = Math.max(cantidad, 1);
 
-  const existentes = db.prepare('SELECT numero_ejemplar FROM ejemplares WHERE libro_id = ?').all(libroId);
+  const existentes = await many('SELECT numero_ejemplar FROM ejemplares WHERE libro_id = $1', [libroId]);
   const ultimo = existentes.reduce((max, e) => Math.max(max, e.numero_ejemplar), 0);
 
-  const insertEjemplar = db.prepare(
-    'INSERT INTO ejemplares (libro_id, numero_ejemplar, estado) VALUES (?, ?, ?)'
-  );
   for (let i = 1; i <= cantidad; i++) {
-    insertEjemplar.run(libroId, ultimo + i, 'disponible');
+    await run('INSERT INTO ejemplares (libro_id, numero_ejemplar, estado) VALUES ($1, $2, $3)', [libroId, ultimo + i, 'disponible']);
   }
 
-  res.status(201).json(toDictLibro(libro));
+  res.status(201).json(await toDictLibro(libro));
 });
 
-router.put('/ejemplares/:id/estado', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), (req, res) => {
+router.put('/ejemplares/:id/estado', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENCARGADO'), async (req, res) => {
   const ejemplarId = Number(req.params.id);
-  const ejemplar = db.prepare('SELECT * FROM ejemplares WHERE id = ?').get(ejemplarId);
+  const ejemplar = await one('SELECT * FROM ejemplares WHERE id = $1', [ejemplarId]);
   if (!ejemplar) return res.status(404).json({ error: 'Recurso no encontrado' });
 
   const estado = (req.body || {}).estado;
@@ -175,8 +166,8 @@ router.put('/ejemplares/:id/estado', requireRoles('ADMIN', 'BIBLIOTECARIO', 'ENC
     return res.status(400).json({ error: 'No se puede marcar disponible un ejemplar que está prestado' });
   }
 
-  db.prepare('UPDATE ejemplares SET estado = ? WHERE id = ?').run(estado, ejemplarId);
-  const actualizado = db.prepare('SELECT * FROM ejemplares WHERE id = ?').get(ejemplarId);
+  await run('UPDATE ejemplares SET estado = $1 WHERE id = $2', [estado, ejemplarId]);
+  const actualizado = await one('SELECT * FROM ejemplares WHERE id = $1', [ejemplarId]);
   res.json(toDictEjemplar(actualizado));
 });
 
