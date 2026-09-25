@@ -341,12 +341,21 @@ function estadoDevueltoLabel(estado){
 }
 
 // ---------- Navegación ----------
+function centrarPestanaActiva(el){
+  const container = el.closest('.nav-container');
+  if(!container) return;
+  const elRect = el.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+  const delta = (elRect.left + elRect.width / 2) - (containerRect.left + containerRect.width / 2);
+  container.scrollBy({left: delta, behavior: 'smooth'});
+}
+
 function switchTab(tabId, evt){
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   if(evt && evt.target){
     evt.target.classList.add('active');
-    evt.target.scrollIntoView({behavior: 'smooth', inline: 'center', block: 'nearest'});
+    centrarPestanaActiva(evt.target);
   }
   const target = document.getElementById(`tab-${tabId}`);
   if(target) target.classList.add('active');
