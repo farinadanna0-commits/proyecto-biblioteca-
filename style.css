@@ -662,9 +662,26 @@ h3.section-title{
   .dash-grid{ display:none; }
 
   .controls{ flex-direction:column; align-items:stretch; }
-  .advanced-filters{ padding:16px; gap:12px; }
-  .advanced-filters .field{ min-width:100%; flex:1 1 100%; }
-  .advanced-filters .btn{ width:100%; flex:1 1 100%; }
+
+  .advanced-filters{ padding:12px 14px; gap:0; }
+  .advanced-filters .filters-label{ font-size:0.66rem; margin-bottom:6px; }
+  .advanced-filters .field{
+    min-width:100%; flex:1 1 100%; margin:0;
+    flex-direction:row; align-items:center; justify-content:space-between; gap:10px;
+    padding:9px 0;
+    border-bottom:1px solid color-mix(in srgb, var(--ink-soft) 18%, transparent);
+  }
+  .advanced-filters .field:last-of-type{ border-bottom:none; }
+  .advanced-filters .field label{ flex-shrink:0; font-size:0.78rem; }
+  .advanced-filters .field select{
+    flex:1 1 auto;
+    max-width:58%;
+    padding:7px 10px;
+    font-size:0.82rem;
+    box-shadow:none;
+    background:color-mix(in srgb, var(--ink-soft) 12%, transparent);
+  }
+  .advanced-filters .btn{ width:100%; flex:1 1 100%; margin-top:12px; padding:10px; font-size:0.8rem; }
 }
 
 /* ---------- Impresión / Descarga en PDF (Reportes) ---------- */
