@@ -598,21 +598,21 @@ h3.section-title{
 .empty-state-cell:hover{ background:none !important; }
 
 /* ---------- Modal de detalle (clave / valor) ---------- */
-.detail-grid{ display:flex; flex-direction:column; gap:12px; margin-bottom:6px; }
+.detail-grid{ display:flex; flex-direction:column; border:1px solid var(--win-border); margin-bottom:6px; }
 .detail-row{
   display:flex;
   justify-content:space-between;
-  align-items:center;
-  gap:12px;
-  padding:12px 14px;
-  border-radius:3px;
-  background:var(--surface);
-  box-shadow:var(--pressed);
+  align-items:baseline;
+  gap:16px;
+  padding:6px 10px;
   font-size:0.88rem;
-  font-weight:600;
+  font-weight:500;
   color:var(--ink);
+  text-align:right;
 }
-.detail-label{ color:var(--ink-soft); font-weight:700; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.03em; }
+.detail-row + .detail-row{ border-top:1px solid var(--grid-line); }
+.detail-row:nth-child(even){ background:var(--grid-zebra); }
+.detail-label{ color:var(--ink-soft); font-weight:600; font-size:0.8rem; text-align:left; flex-shrink:0; }
 
 /* ---------- Tickets / Listas ---------- */
 .list-grid{ display:flex; flex-direction:column; gap:16px; }
@@ -875,3 +875,21 @@ h3.section-title{
   .bar-lbl{ font-size:0.62rem; }
   .bar-chart{ height:150px; }
 }
+
+/* ---------- Ejemplares en el detalle del libro ---------- */
+.ej-head{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; margin:16px 0 6px; }
+.ej-title{ font-size:0.9rem; font-weight:600; color:var(--ink); }
+.ej-resumen{ font-size:0.8rem; color:var(--ink-soft); }
+.ej-wrap{ border:1px solid var(--win-border); max-height:230px; overflow-y:auto; }
+.ej-wrap .grid-table td{ vertical-align:middle; }
+.ej-select{
+  width:100%;
+  padding:3px 6px;
+  font:inherit; font-size:0.82rem;
+  color:var(--ink);
+  background:var(--surface);
+  border:1px solid var(--win-border);
+  border-radius:3px;
+  cursor:pointer;
+}
+.ej-nota{ font-size:0.8rem; color:var(--ink-faint); }

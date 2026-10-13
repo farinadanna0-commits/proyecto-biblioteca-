@@ -559,9 +559,15 @@
       <div class="detail-row"><span class="detail-label">Ubicación</span><span id="detalleLibroUbicacion">—</span></div>
       <div class="detail-row"><span class="detail-label">Precio reposición</span><span id="detalleLibroPrecio">—</span></div>
     </div>
-    <div class="field full" style="margin-top:16px;">
-      <label>Ejemplares</label>
-      <div id="detalleLibroEjemplares" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"></div>
+    <div class="ej-head">
+      <span class="ej-title">Ejemplares</span>
+      <span class="ej-resumen" id="detalleLibroEjResumen"></span>
+    </div>
+    <div class="ej-wrap">
+      <table class="grid-table">
+        <thead><tr><th style="width:70px;">N°</th><th>Estado</th><th style="width:160px;">Cambiar a</th></tr></thead>
+        <tbody id="detalleLibroEjemplares"></tbody>
+      </table>
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="editarLibroDesdeDetalle()">Editar</button>

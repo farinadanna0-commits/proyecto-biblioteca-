@@ -801,18 +801,17 @@ async function deleteBook(id){
   } catch(err){}
 }
 
-async function ciclarEstadoEjemplar(ejemplarId, estadoActual){
-  if(estadoActual === 'prestado'){
-    showToast('Este ejemplar está prestado; no se puede cambiar su estado', 'info');
-    return;
-  }
-  const siguiente = {disponible: 'dañado', 'dañado': 'perdido', perdido: 'disponible'}[estadoActual] || 'disponible';
+async function cambiarEstadoEjemplar(ejemplarId, nuevoEstado){
   try {
     await apiFetch(`/libros/ejemplares/${ejemplarId}/estado`, {
-      method: 'PUT', body: JSON.stringify({estado: siguiente}),
+      method: 'PUT', body: JSON.stringify({estado: nuevoEstado}),
     });
-    showToast(`Ejemplar marcado como ${estadoEjemplarLabel(siguiente)}`, 'info');
+    showToast(`Ejemplar marcado como ${estadoEjemplarLabel(nuevoEstado)}`, 'info');
     await cargarDatosIniciales();
+    const libro = books.find(x => x.id === detalleLibroId);
+    if(libro && document.getElementById('modalLibroDetalle').classList.contains('open')){
+      renderEjemplaresDetalle(libro);
+    }
   } catch(err){}
 }
 
@@ -1447,11 +1446,39 @@ function verDetalleLibro(id){
   document.getElementById('detalleLibroUbicacion').textContent = b.ubicacion_fisica || '—';
   document.getElementById('detalleLibroPrecio').textContent = b.precio_reposicion ? `$${b.precio_reposicion}` : '—';
 
-  document.getElementById('detalleLibroEjemplares').innerHTML = (b.ejemplares || []).map(e =>
-    `<span class="status-chip ${ejemplarChipClass(e.estado)}" style="cursor:${e.estado === 'prestado' ? 'default' : 'pointer'};" title="Ejemplar #${e.numero_ejemplar}: ${estadoEjemplarLabel(e.estado)}${e.estado === 'prestado' ? '' : ' (click para cambiar estado)'}" onclick="ciclarEstadoEjemplar(${e.id}, '${e.estado}')">#${e.numero_ejemplar} ${estadoEjemplarLabel(e.estado)}</span>`
-  ).join('');
+  renderEjemplaresDetalle(b);
 
   openModal('modalLibroDetalle');
+}
+
+function renderEjemplaresDetalle(b){
+  const ejemplares = [...(b.ejemplares || [])].sort((x, y) => x.numero_ejemplar - y.numero_ejemplar);
+  const cuenta = estado => ejemplares.filter(e => e.estado === estado).length;
+  const partes = [`${cuenta('disponible')} disponibles`, `${cuenta('prestado')} prestados`];
+  if(cuenta('dañado')) partes.push(`${cuenta('dañado')} dañados`);
+  if(cuenta('perdido')) partes.push(`${cuenta('perdido')} perdidos`);
+  document.getElementById('detalleLibroEjResumen').textContent =
+    `${ejemplares.length} en total · ${partes.join(' · ')}`;
+
+  const tbody = document.getElementById('detalleLibroEjemplares');
+  if(!ejemplares.length){
+    tbody.innerHTML = '<tr class="grid-empty"><td colspan="3">Este libro no tiene ejemplares cargados.</td></tr>';
+    return;
+  }
+  const opciones = ['disponible', 'dañado', 'perdido'];
+  tbody.innerHTML = ejemplares.map(e => {
+    const control = e.estado === 'prestado'
+      ? '<span class="ej-nota">En préstamo</span>'
+      : `<select class="ej-select" onchange="cambiarEstadoEjemplar(${e.id}, this.value)">
+          ${opciones.map(o => `<option value="${o}"${o === e.estado ? ' selected' : ''}>${estadoEjemplarLabel(o)}</option>`).join('')}
+        </select>`;
+    return `
+    <tr>
+      <td class="num-cell">${e.numero_ejemplar}</td>
+      <td><span class="grid-state ${ejemplarChipClass(e.estado)}">${estadoEjemplarLabel(e.estado)}</span></td>
+      <td>${control}</td>
+    </tr>`;
+  }).join('');
 }
 
 function editarLibroDesdeDetalle(){
