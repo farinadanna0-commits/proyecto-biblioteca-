@@ -112,11 +112,52 @@ router.put('/:id', requireRoles('ADMIN', 'BIBLIOTECARIO'), async (req, res) => {
     'titulo', 'autor', 'editorial', 'edicion', 'anio_publicacion',
     'genero', 'categoria', 'isbn', 'ubicacion_fisica', 'precio_reposicion',
   ];
+  // Ajuste de stock: se valida antes de tocar nada para no dejar cambios a medias.
+  let quitar = [];
+  let agregar = 0;
+  if ('cantidad_ejemplares' in data) {
+    const nueva = parseInt(data.cantidad_ejemplares, 10);
+    if (!Number.isFinite(nueva) || nueva < 1) {
+      return res.status(400).json({ error: 'La cantidad de ejemplares debe ser al menos 1' });
+    }
+    const ejemplares = await many('SELECT * FROM ejemplares WHERE libro_id = $1 ORDER BY numero_ejemplar DESC', [libroId]);
+    if (nueva > ejemplares.length) {
+      agregar = nueva - ejemplares.length;
+    } else if (nueva < ejemplares.length) {
+      const sobran = ejemplares.length - nueva;
+      // Sólo se pueden borrar ejemplares disponibles que nunca se prestaron
+      // (los préstamos guardan referencia al ejemplar).
+      const conHistorial = await many(
+        'SELECT DISTINCT ejemplar_id FROM prestamos WHERE ejemplar_id = ANY($1::int[])',
+        [ejemplares.map((e) => e.id)]
+      );
+      const idsConHistorial = new Set(conHistorial.map((p) => p.ejemplar_id));
+      const borrables = ejemplares.filter((e) => e.estado === 'disponible' && !idsConHistorial.has(e.id));
+      if (borrables.length < sobran) {
+        return res.status(400).json({
+          error: `Sólo se pueden quitar ${borrables.length} ejemplar(es): el resto está prestado o tiene préstamos registrados. Para darlos de baja, marcalos como Perdido o Dañado en el detalle del libro.`,
+        });
+      }
+      quitar = borrables.slice(0, sobran).map((e) => e.id);
+    }
+  }
+
   const actualizaciones = campos.filter((c) => c in data);
   if (actualizaciones.length) {
     const valores = actualizaciones.map((c) => data[c]);
     const set = actualizaciones.map((c, i) => `${c} = $${i + 1}`).join(', ');
     await run(`UPDATE libros SET ${set} WHERE id = $${valores.length + 1}`, [...valores, libroId]);
+  }
+
+  if (quitar.length) {
+    await run('DELETE FROM ejemplares WHERE id = ANY($1::int[])', [quitar]);
+  }
+  if (agregar) {
+    const restantes = await many('SELECT numero_ejemplar FROM ejemplares WHERE libro_id = $1', [libroId]);
+    const ultimo = restantes.reduce((max, e) => Math.max(max, e.numero_ejemplar), 0);
+    for (let i = 1; i <= agregar; i++) {
+      await run('INSERT INTO ejemplares (libro_id, numero_ejemplar, estado) VALUES ($1, $2, $3)', [libroId, ultimo + i, 'disponible']);
+    }
   }
 
   const actualizado = await one('SELECT * FROM libros WHERE id = $1', [libroId]);

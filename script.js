@@ -398,7 +398,7 @@ function openModal(id){
     document.getElementById('modalBookSaveBtn').textContent = 'Guardar Libro';
     document.querySelectorAll('#modalBook input').forEach(i => i.value = '');
     document.getElementById('f-book-copies').value = 1;
-    document.getElementById('bookCopiesField').style.display = '';
+    document.getElementById('bookCopiesHint').textContent = '';
   }
 }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
@@ -773,7 +773,7 @@ async function saveBook(evt){
   try {
     if(editingBookId){
       await apiFetch(`/libros/${editingBookId}`, {
-        method: 'PUT', body: JSON.stringify(datosComunes),
+        method: 'PUT', body: JSON.stringify(Object.assign({}, datosComunes, {cantidad_ejemplares: cantidad})),
       });
       showToast('Libro actualizado', 'success');
     } else {
@@ -1490,7 +1490,10 @@ function editarLibroDesdeDetalle(){
   editingBookId = b.id;
   document.getElementById('modalBookTitle').textContent = 'Editar Libro';
   document.getElementById('modalBookSaveBtn').textContent = 'Guardar Cambios';
-  document.getElementById('bookCopiesField').style.display = 'none';
+  document.getElementById('f-book-copies').value = b.cantidad_ejemplares || 1;
+  const prestados = (b.ejemplares || []).filter(e => e.estado === 'prestado').length;
+  document.getElementById('bookCopiesHint').textContent =
+    `Actualmente ${b.cantidad_ejemplares} (${b.ejemplares_disponibles} disponibles${prestados ? `, ${prestados} prestados` : ''}). Si la subís se agregan ejemplares nuevos; si la bajás se quitan disponibles.`;
 
   document.getElementById('f-book-title').value = b.titulo || '';
   document.getElementById('f-book-author').value = b.autor || '';
